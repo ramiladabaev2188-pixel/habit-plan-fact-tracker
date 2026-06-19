@@ -38,8 +38,8 @@ export function PlanFactChart({ data }: { data: ChartPoint[] }) {
           <YAxis tickLine={false} axisLine={false} fontSize={12} />
           <Tooltip formatter={(value) => formatScore(Number(value))} />
           <Legend />
-          <Bar dataKey="plan" name="План" fill="#2563eb" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="fact" name="Факт" fill="#16a34a" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="plan" name="План" fill="#6b7f88" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="fact" name="Факт" fill="#187658" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -76,7 +76,7 @@ export function CumulativePlanFactChart({ data }: { data: ChartPoint[] }) {
             type="monotone"
             dataKey="plan"
             name="План накопительно"
-            stroke="#2563eb"
+            stroke="#6b7f88"
             strokeWidth={2}
             dot={false}
           />
@@ -84,7 +84,7 @@ export function CumulativePlanFactChart({ data }: { data: ChartPoint[] }) {
             type="monotone"
             dataKey="fact"
             name="Факт накопительно"
-            stroke="#16a34a"
+            stroke="#187658"
             strokeWidth={2}
             dot={false}
           />

@@ -57,9 +57,9 @@ export function PlannerWorkspace({
   const approved = selectedMonth?.status === "approved" || selectedMonth?.status === "closed";
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.2fr]">
-        <Card>
+    <div className="space-y-6">
+      <div className="grid gap-3 xl:grid-cols-[0.95fr_1fr_1.2fr]">
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Месяц</CardTitle>
             <CardDescription>Черновик можно менять свободно</CardDescription>
@@ -117,7 +117,7 @@ export function PlannerWorkspace({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Категории</CardTitle>
             <CardDescription>Цвет используется в аналитике</CardDescription>
@@ -139,7 +139,7 @@ export function PlannerWorkspace({
             {categories.length ? (
               <div className="space-y-3">
                 {categories.map((category) => (
-                  <div key={category.id} className="rounded-md border p-3">
+                  <div key={category.id} className="list-row">
                     <form action={updateCategoryAction} className="grid gap-3">
                       <input type="hidden" name="id" value={category.id} />
                       <div className="space-y-2">
@@ -197,7 +197,7 @@ export function PlannerWorkspace({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Задачи</CardTitle>
             <CardDescription>Вес усиливает вклад задачи в месяц</CardDescription>
@@ -233,7 +233,7 @@ export function PlannerWorkspace({
                   const taskCategory = task.category_id ? categoryMap.get(task.category_id) : null;
 
                   return (
-                    <div key={task.id} className="rounded-md border p-3">
+                    <div key={task.id} className="list-row">
                       <div className="mb-3 flex flex-wrap items-center gap-2">
                         <Badge variant={task.is_active ? "success" : "secondary"}>
                           {task.is_active ? "Активна" : "Архив"}
@@ -332,7 +332,7 @@ export function PlannerWorkspace({
         </Card>
       </div>
 
-      <Card>
+      <Card className="section-panel">
         <CardHeader>
           <CardTitle>Новый месяц из шаблона</CardTitle>
           <CardDescription>Копирует правила планирования прошлого месяца и генерирует план заново</CardDescription>
@@ -366,23 +366,23 @@ export function PlannerWorkspace({
               Создать
             </Button>
             <div className="lg:col-span-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              <label className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <label className="planner-choice">
                 <input type="checkbox" name="copyAllTasks" />
                 Копировать все задачи
               </label>
-              <label className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <label className="planner-choice">
                 <input type="checkbox" name="onlyActive" defaultChecked />
                 Только активные
               </label>
-              <label className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <label className="planner-choice">
                 <input type="checkbox" name="excludeTasksWithoutPlan" defaultChecked />
                 Исключить без плана
               </label>
-              <label className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <label className="planner-choice">
                 <input type="checkbox" name="keepCategories" defaultChecked />
                 Сохранить категории
               </label>
-              <label className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <label className="planner-choice">
                 <input type="checkbox" name="keepGoalLinks" defaultChecked />
                 Связи с целями
               </label>
@@ -392,7 +392,7 @@ export function PlannerWorkspace({
       </Card>
 
       {selectedMonth ? (
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Генератор плана</CardTitle>
             <CardDescription>После утверждения можно только увеличить план или добавить новое</CardDescription>
@@ -430,7 +430,7 @@ export function PlannerWorkspace({
                 <Label>Дни недели</Label>
                 <div className="flex flex-wrap gap-2">
                   {weekDayOptions.map((day) => (
-                    <label key={day.value} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+                    <label key={day.value} className="planner-choice px-2 py-1 text-xs">
                       <input type="checkbox" name="weekdays" value={day.value} defaultChecked={day.value >= 1 && day.value <= 5} />
                       {day.label}
                     </label>
@@ -458,7 +458,7 @@ export function PlannerWorkspace({
       ) : null}
 
       {selectedMonth ? (
-        <Card>
+        <Card className="section-panel">
           <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle>Календарная таблица</CardTitle>
@@ -478,11 +478,11 @@ export function PlannerWorkspace({
           <CardContent>
             <form action={savePlanGridAction} className="space-y-4">
               <input type="hidden" name="monthId" value={selectedMonth.id} />
-              <div className="overflow-x-auto rounded-md border">
+              <div className="overflow-x-auto rounded-md border border-border/85 bg-background/45">
                 <table className="min-w-[980px] w-full border-collapse text-sm">
                   <thead>
-                    <tr className="bg-muted/60">
-                      <th className="sticky left-0 z-10 w-64 bg-muted/95 p-2 text-left font-medium">Задача</th>
+                    <tr className="bg-muted/70">
+                      <th className="sticky left-0 z-10 w-64 bg-muted p-3 text-left font-medium">Задача</th>
                       {monthDates.map((date) => (
                         <th key={date.toISOString()} className="w-16 p-2 text-center font-medium">
                           {date.getDate()}
@@ -499,8 +499,8 @@ export function PlannerWorkspace({
                       }, 0);
 
                       return (
-                        <tr key={task.id} className="border-t">
-                          <td className="sticky left-0 z-10 bg-card p-2 align-top">
+                        <tr key={task.id} className="border-t border-border/75">
+                          <td className="sticky left-0 z-10 bg-card p-3 align-top">
                             <div className="font-medium">{task.title}</div>
                             <div className="text-xs text-muted-foreground">Вес {formatScore(task.weight)}</div>
                           </td>

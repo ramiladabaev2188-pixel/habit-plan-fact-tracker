@@ -106,24 +106,24 @@ export default async function MobilePage({
     : null;
 
   return (
-    <div className="mx-auto max-w-xl space-y-4 pb-24 md:pl-64">
-      <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="bg-primary p-4 text-primary-foreground">
+    <div className="app-page app-page-with-rail mx-auto max-w-2xl pb-24 mobile-page">
+      <section className="mobile-hero">
+        <div className="p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <Badge variant="secondary" className="mb-3 text-secondary-foreground">
+              <Badge variant="secondary" className="mb-3 bg-primary-foreground/15 text-primary-foreground">
                 <Smartphone className="mr-1 h-3.5 w-3.5" />
                 Телефон
               </Badge>
-              <h1 className="text-2xl font-semibold tracking-normal">Сегодня</h1>
+              <h1 className="text-3xl font-semibold tracking-tight">Сегодня</h1>
               <p className="text-sm text-primary-foreground/80">{selectedDate}</p>
             </div>
-            <div className="rounded-lg bg-primary-foreground/15 p-3">
+            <div className="rounded-md bg-primary-foreground/15 p-3">
               <ListChecks className="h-7 w-7" />
             </div>
           </div>
         </div>
-        <div className="space-y-4 p-4">
+        <div className="space-y-4 border-t border-primary-foreground/15 bg-card p-4 text-card-foreground">
           <form className="grid grid-cols-[1fr_auto] gap-2" action="/mobile">
             <input type="hidden" name="month" value={selectedMonth.id} />
             <div className="space-y-2">
@@ -170,7 +170,7 @@ export default async function MobilePage({
         </Button>
       </div>
 
-      <Card>
+      <Card className="section-panel">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Месяц</CardTitle>
         </CardHeader>
@@ -196,11 +196,11 @@ export default async function MobilePage({
             )}
           />
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-md bg-muted/60 p-3">
+            <div className="list-row">
               <div className="text-muted-foreground">Прогноз</div>
               <div className="font-semibold">{formatPercent(monthStats.forecastPercent)}</div>
             </div>
-            <div className="rounded-md bg-muted/60 p-3">
+            <div className="list-row">
               <div className="text-muted-foreground">Нужно в день</div>
               <div className="font-semibold">{formatScore(monthStats.requiredPerDay)}</div>
             </div>
@@ -209,7 +209,7 @@ export default async function MobilePage({
       </Card>
 
       {focusTask ? (
-        <Card className="border-warning/50 bg-warning/10">
+        <Card className="focus-panel">
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground">Главный фокус</div>
             <div className="mt-1 font-semibold">{focusTask.title}</div>
@@ -221,7 +221,7 @@ export default async function MobilePage({
       ) : null}
 
       {teamStats && teamData?.selectedTeam ? (
-        <Card>
+        <Card className="section-panel">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Команда</CardTitle>
           </CardHeader>
@@ -239,7 +239,7 @@ export default async function MobilePage({
             </div>
             <Progress value={Math.min(teamStats.completion, 1.2) * 100} />
             {teamStats.focusMember ? (
-              <div className="rounded-md bg-muted/60 p-3 text-sm">
+              <div className="list-row text-sm">
                 <span className="text-muted-foreground">Фокус команды: </span>
                 <span className="font-medium">{teamStats.focusMember.name}</span>
               </div>
@@ -250,7 +250,10 @@ export default async function MobilePage({
 
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Быстрое заполнение</h2>
+          <div>
+            <div className="page-kicker">Быстрый режим</div>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Заполнить факт</h2>
+          </div>
           <Select className="w-40" defaultValue={selectedMonth.id} aria-label="Месяц">
             {months.map((month) => (
               <option key={month.id} value={month.id}>
@@ -274,7 +277,7 @@ export default async function MobilePage({
 
 function MobileMetric({ label, value, tone }: { label: string; value: string; tone: "success" | "warning" | "info" }) {
   return (
-    <div className={cn("rounded-lg border p-3", tone === "success" && "bg-success/10", tone === "warning" && "bg-warning/10", tone === "info" && "bg-info/10")}>
+    <div className={cn("rounded-md border p-3", tone === "success" && "border-success/25 bg-success/10", tone === "warning" && "border-warning/30 bg-warning/10", tone === "info" && "border-info/25 bg-info/10")}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold">{value}</div>
     </div>

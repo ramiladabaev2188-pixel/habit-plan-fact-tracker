@@ -79,13 +79,14 @@ export default async function DailyPage({
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return (
-    <div className="space-y-5 md:pl-64">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="app-page app-page-with-rail daily-page">
+      <div className="workspace-header">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal">День</h1>
-          <p className="text-sm text-muted-foreground">{formatDayFull(selectedDate)}</p>
+          <div className="page-kicker">Ежедневный ритм</div>
+          <h1 className="workspace-title mt-1">День</h1>
+          <p className="workspace-subtitle">{formatDayFull(selectedDate)}. Быстро зафиксируйте факт и оставьте короткую заметку.</p>
         </div>
-        <form className="grid gap-3 sm:grid-cols-[220px_180px_auto]" action="/daily">
+        <form className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] lg:w-auto lg:grid-cols-[220px_180px_auto]" action="/daily">
           <div className="space-y-2">
             <Label>Месяц</Label>
             <Select name="month" defaultValue={selectedMonth.id}>
@@ -104,30 +105,30 @@ export default async function DailyPage({
         </form>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="section-panel">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
           <CardTitle>Итог дня</CardTitle>
+          <span className="text-sm text-muted-foreground">Факт относительно плана</span>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md bg-muted/60 p-3">
+          <div className="list-row">
             <div className="text-sm text-muted-foreground">Выполнение</div>
-            <div className="text-2xl font-semibold">{formatPercent(dayStats.completion)}</div>
+            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatPercent(dayStats.completion)}</div>
           </div>
-          <div className="rounded-md bg-muted/60 p-3">
+          <div className="list-row">
             <div className="text-sm text-muted-foreground">Факт</div>
-            <div className="text-2xl font-semibold">{formatScore(dayStats.factScore)}</div>
+            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatScore(dayStats.factScore)}</div>
           </div>
-          <div className="rounded-md bg-muted/60 p-3">
+          <div className="list-row">
             <div className="text-sm text-muted-foreground">План</div>
-            <div className="text-2xl font-semibold">{formatScore(dayStats.planScore)}</div>
+            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatScore(dayStats.planScore)}</div>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-3 lg:grid-cols-3">
         {hasUnfilledYesterday ? (
-          <Card className="border-warning/50 bg-warning/10">
-            <CardContent className="flex flex-col gap-3 p-4">
+          <div className="signal-panel flex flex-col gap-3 border-warning/35 bg-warning/10">
               <div>
                 <div className="font-semibold">Вчера не заполнено</div>
                 <p className="text-sm text-muted-foreground">Есть плановые задачи без факта за {yesterdayKey}.</p>
@@ -135,35 +136,29 @@ export default async function DailyPage({
               <Button asChild variant="outline" size="sm">
                 <Link href={`/daily?month=${selectedMonth.id}&date=${yesterdayKey}`}>Открыть вчера</Link>
               </Button>
-            </CardContent>
-          </Card>
+          </div>
         ) : null}
 
         {monthStats.forecastPercent < 0.8 && monthStats.totalPlanScore > 0 ? (
-          <Card className="border-destructive/40 bg-destructive/10">
-            <CardContent className="p-4">
+          <div className="signal-panel border-destructive/30 bg-destructive/10">
               <div className="font-semibold">Прогноз ниже 80%</div>
               <p className="text-sm text-muted-foreground">
                 Текущий прогноз: {formatPercent(monthStats.forecastPercent)}. Нужен более плотный факт по задачам с весом.
               </p>
-            </CardContent>
-          </Card>
+          </div>
         ) : null}
 
         {focusTask && focusTask.requiredPerDay > 0 ? (
-          <Card className="border-info/40 bg-info/10">
-            <CardContent className="p-4">
+          <div className="signal-panel border-primary/25 bg-primary/[0.055]">
               <div className="font-semibold">Главный фокус</div>
               <p className="text-sm text-muted-foreground">
                 {focusTask.title}: {formatScore(focusTask.requiredPerDay)} балла в день.
               </p>
-            </CardContent>
-          </Card>
+          </div>
         ) : null}
 
         {monthEnded ? (
-          <Card className="border-over/40 bg-over/10">
-            <CardContent className="flex flex-col gap-3 p-4">
+          <div className="signal-panel flex flex-col gap-3 border-over/30 bg-over/10">
               <div>
                 <div className="font-semibold">Месяц завершился</div>
                 <p className="text-sm text-muted-foreground">Можно закрыть месяц и создать следующий из шаблона.</p>
@@ -172,8 +167,7 @@ export default async function DailyPage({
                 <input type="hidden" name="monthId" value={selectedMonth.id} />
                 <Button type="submit" size="sm" variant="secondary">Закрыть месяц</Button>
               </form>
-            </CardContent>
-          </Card>
+          </div>
         ) : null}
       </div>
 

@@ -87,17 +87,18 @@ export default async function DashboardPage({
     yesterdayPlans.some((plan) => !yesterdayFactKeys.has(`${plan.task_id}:${plan.date}`));
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="app-page app-page-with-rail dashboard-page">
       <LocalReminders
         preferences={preferences}
         forecastPercent={monthStats.forecastPercent}
         hasUnfilledYesterday={hasUnfilledYesterday}
         focusTaskTitle={focus?.title ?? null}
       />
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="workspace-header">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal">Дашборд</h1>
-          <p className="text-sm text-muted-foreground">{selectedMonth.title}</p>
+          <div className="page-kicker">Рабочее пространство</div>
+          <h1 className="workspace-title mt-1">Дашборд</h1>
+          <p className="workspace-subtitle">{selectedMonth.title}. Сначала закройте главный риск, затем держите общий темп.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant={badgeVariantByLevel[completionStatus.level]}>
@@ -109,7 +110,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.15fr_1.15fr_.85fr_.85fr]">
         <KpiCard
           icon={<Target className="h-5 w-5" />}
           label="Выполнение месяца"
@@ -144,8 +145,8 @@ export default async function DashboardPage({
         />
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="focus-panel">
+        <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
             Главный фокус дня
@@ -170,8 +171,8 @@ export default async function DashboardPage({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>План vs факт по дням</CardTitle>
           </CardHeader>
@@ -179,7 +180,7 @@ export default async function DashboardPage({
             <DashboardPlanFactChart data={chartData} />
           </CardContent>
         </Card>
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Накопительный план vs факт</CardTitle>
           </CardHeader>
@@ -189,24 +190,31 @@ export default async function DashboardPage({
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <Card className="section-panel">
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <CardTitle>Категории</CardTitle>
+            <p className="text-sm text-muted-foreground">Где темп держится, а где нужен фокус.</p>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {categoryStats.map((categoryStat) => {
           const category = categories.find((item) => item.id === categoryStat.categoryId);
           const status = getCompletionStatus(categoryStat.completion);
 
           return (
-            <Card key={categoryStat.categoryId}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
+            <div key={categoryStat.categoryId} className="list-row">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
                   <span
-                    className="h-3 w-3 rounded-full"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: category?.color ?? "#64748b" }}
                   />
-                  {category?.name ?? "Без категории"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-2xl font-semibold">{formatPercent(categoryStat.completion)}</div>
+                  <span className="truncate">{category?.name ?? "Без категории"}</span>
+                </div>
+                <div className="text-lg font-semibold">{formatPercent(categoryStat.completion)}</div>
+              </div>
+              <div className="mt-4 space-y-2">
                 <Progress
                   value={Math.min(categoryStat.completion, 1.2) * 100}
                   indicatorClassName={cn(status.level === "over" && "bg-over", status.level === "warning" && "bg-warning", status.level === "danger" && "bg-destructive", status.level === "success" && "bg-success")}
@@ -214,19 +222,20 @@ export default async function DashboardPage({
                 <div className="text-sm text-muted-foreground">
                   {formatScore(categoryStat.factScore)} / {formatScore(categoryStat.planScore)}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           );
         })}
-      </div>
+        </CardContent>
+      </Card>
 
-      <Card>
+      <Card className="section-panel">
         <CardHeader>
           <CardTitle>Задачи с наибольшим отставанием</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {taskStats.slice(0, 6).map((task) => (
-            <div key={task.taskId} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div key={task.taskId} className="list-row grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <div className="font-medium">{task.title}</div>
                 <div className="text-sm text-muted-foreground">
@@ -265,8 +274,8 @@ function KpiCard({
   tone: "over" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="relative space-y-4 p-5">
+    <Card className="metric-card">
+      <CardContent className="relative space-y-4 p-0">
         <div
           className={cn(
             "absolute inset-x-0 top-0 h-1",
@@ -292,7 +301,7 @@ function KpiCard({
             {icon}
           </div>
         </div>
-        <div className="text-3xl font-semibold tracking-normal md:text-4xl">{value}</div>
+        <div className="text-3xl font-semibold tracking-tight md:text-4xl">{value}</div>
         <Progress
           value={Math.min(progress, 1.2) * 100}
           indicatorClassName={cn(

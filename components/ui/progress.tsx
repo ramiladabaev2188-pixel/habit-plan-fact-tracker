@@ -16,11 +16,11 @@ export function Progress({
 
   return (
     <div
-      className={cn("relative h-2.5 w-full overflow-hidden rounded-full bg-muted shadow-inner", className)}
+      className={cn("relative h-2 w-full overflow-hidden rounded-full bg-muted", className)}
       {...props}
     >
       <div
-        className={cn("h-full bg-primary transition-all duration-500", indicatorClassName)}
+        className={cn("h-full bg-primary transition-[width] duration-500 ease-out", indicatorClassName)}
         style={{ width: `${safeValue}%` }}
       />
     </div>

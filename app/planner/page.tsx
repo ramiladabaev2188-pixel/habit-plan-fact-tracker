@@ -25,12 +25,15 @@ export default async function PlannerPage({
   }
 
   return (
-    <div className="space-y-5 md:pl-64">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-normal">Планирование</h1>
-        <p className="text-sm text-muted-foreground">
-          Месяцы, категории, задачи, веса и план по дням.
-        </p>
+    <div className="app-page app-page-with-rail planner-page">
+      <div className="workspace-header">
+        <div>
+          <div className="page-kicker">Конструктор месяца</div>
+          <h1 className="workspace-title mt-1">Планирование</h1>
+          <p className="workspace-subtitle">
+            Месяцы, категории, задачи, веса и план по дням.
+          </p>
+        </div>
       </div>
       <PlannerWorkspace
         months={result.data.months}

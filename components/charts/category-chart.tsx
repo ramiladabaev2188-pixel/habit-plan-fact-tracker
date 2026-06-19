@@ -40,8 +40,8 @@ export function CategoryChart({ data }: { data: CategoryPoint[] }) {
                 : formatScore(Number(value))
             }
           />
-          <Bar dataKey="plan" name="План" fill="#2563eb" radius={[0, 4, 4, 0]} />
-          <Bar dataKey="fact" name="Факт" fill="#16a34a" radius={[0, 4, 4, 0]} />
+          <Bar dataKey="plan" name="План" fill="#6b7f88" radius={[0, 4, 4, 0]} />
+          <Bar dataKey="fact" name="Факт" fill="#187658" radius={[0, 4, 4, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

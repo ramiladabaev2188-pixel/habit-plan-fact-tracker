@@ -231,8 +231,8 @@ export function DailyInput({
         });
       })}
     >
-      <Card>
-        <CardHeader className="space-y-3">
+      <Card className="section-panel">
+        <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Быстрый ввод</CardTitle>
             <Badge variant={hasUnfilled ? "warning" : "success"}>
@@ -240,7 +240,7 @@ export function DailyInput({
             </Badge>
           </div>
           {hasUnfilled ? (
-            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+            <div className="flex items-start gap-2 rounded-md border border-warning/35 bg-warning/10 p-3 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
               Остались пустые факты. Перед сохранением можно отметить их нулем одной кнопкой.
             </div>
@@ -262,8 +262,8 @@ export function DailyInput({
       </Card>
 
       {groups.map((group) => (
-        <details key={group.category?.id ?? "without-category"} open className="group overflow-hidden rounded-lg border bg-card/95 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.75)]">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/35 p-4">
+        <details key={group.category?.id ?? "without-category"} open className="daily-category group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/35 p-4 transition-colors hover:bg-primary/[0.04]">
             <div className="flex min-w-0 items-center gap-2">
               {group.category ? (
                 <span
@@ -276,7 +276,7 @@ export function DailyInput({
             </div>
             <span className="text-xs text-muted-foreground">свернуть</span>
           </summary>
-          <div className="space-y-3 border-t p-3">
+          <div className="space-y-3 border-t border-border/80 p-3">
             {group.rows.map(({ item, index }) => {
               const current = watchedEntries[index]?.actualValue ?? 0;
               const stateClass =
@@ -287,8 +287,8 @@ export function DailyInput({
                     : "border-destructive/40 bg-destructive/10";
 
               return (
-                <Card key={item.task.id} className={cn("overflow-hidden transition-colors", stateClass)}>
-                  <CardContent className="space-y-4 p-4">
+                <article key={item.task.id} className={cn("daily-task", stateClass)}>
+                  <div className="space-y-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -314,7 +314,7 @@ export function DailyInput({
                           variant={current === value ? "default" : "outline"}
                           className={cn(
                             "h-12 px-2 text-base sm:h-11 sm:text-sm",
-                            current === value && "scale-[1.02]"
+                            current === value && "scale-[1.02] shadow-[0_10px_20px_-16px_hsl(var(--primary))]"
                           )}
                           disabled={readOnly}
                           onClick={() => setFactValue(index, item.task.id, value)}
@@ -335,15 +335,15 @@ export function DailyInput({
                         {form.formState.errors.entries[index]?.actualValue?.message}
                       </p>
                     ) : null}
-                  </CardContent>
-                </Card>
+                  </div>
+                </article>
               );
             })}
           </div>
         </details>
       ))}
 
-      <Card>
+      <Card className="section-panel">
         <CardHeader>
           <CardTitle>Заметка дня</CardTitle>
         </CardHeader>
@@ -383,7 +383,7 @@ export function DailyInput({
         </CardContent>
       </Card>
 
-      <div className="sticky bottom-20 z-20 flex items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-lg md:bottom-4">
+      <div className="daily-savebar">
         <div className="min-w-0 text-sm text-muted-foreground">
           <div>
             {readOnly

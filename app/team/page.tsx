@@ -79,12 +79,15 @@ export default async function TeamPage({
 
   if (!selectedTeam) {
     return (
-      <div className="space-y-5 md:pl-64">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal">Команда</h1>
-          <p className="text-sm text-muted-foreground">
+      <div className="app-page app-page-with-rail team-page">
+        <div className="workspace-header">
+          <div>
+            <div className="page-kicker">Совместный ритм</div>
+            <h1 className="workspace-title mt-1">Команда</h1>
+            <p className="workspace-subtitle">
             Создайте команду, пригласите друзей и смотрите общий прогресс без доступа к чужому редактированию.
-          </p>
+            </p>
+          </div>
         </div>
         <CreateTeamCard />
       </div>
@@ -92,15 +95,16 @@ export default async function TeamPage({
   }
 
   return (
-    <div className="space-y-5 md:pl-64">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="app-page app-page-with-rail team-page">
+      <div className="workspace-header">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal">Команда</h1>
-          <p className="text-sm text-muted-foreground">
+          <div className="page-kicker">Совместный ритм</div>
+          <h1 className="workspace-title mt-1">Команда</h1>
+          <p className="workspace-subtitle">
             {selectedTeam.name} · {getMonthTitle(year, month)}
           </p>
         </div>
-        <form className="grid gap-2 sm:grid-cols-[220px_110px_110px_auto]" action="/team">
+        <form className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_100px_100px_auto] lg:w-auto lg:grid-cols-[220px_110px_110px_auto]" action="/team">
           <div className="space-y-1">
             <Label>Команда</Label>
             <Select name="team" defaultValue={selectedTeam.id}>
@@ -124,8 +128,7 @@ export default async function TeamPage({
       </div>
 
       {inviteLink ? (
-        <Card className="border-info/50 bg-info/10">
-          <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="signal-panel flex flex-col gap-3 border-primary/25 bg-primary/[0.055] lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="font-semibold">Ссылка приглашения создана</div>
               <p className="text-sm text-muted-foreground">
@@ -134,11 +137,10 @@ export default async function TeamPage({
               <p className="break-all text-sm text-muted-foreground">{inviteLink}</p>
             </div>
             <CopyInviteLink inviteLink={inviteLink} />
-          </CardContent>
-        </Card>
+        </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.15fr_1fr_.85fr_.85fr]">
         <KpiCard title="Командное выполнение" value={formatPercent(stats.completion)} detail={`${formatScore(stats.factScore)} / ${formatScore(stats.planScore)} баллов`} />
         <KpiCard title="Прогноз" value={formatPercent(stats.forecastPercent)} detail="если сохранять текущий темп" />
         <KpiCard title="Нужно в день" value={formatScore(stats.requiredPerDay)} detail="суммарно по команде" />
@@ -146,7 +148,7 @@ export default async function TeamPage({
       </div>
 
       {stats.focusMember ? (
-        <Card className="border-warning/50 bg-warning/10">
+        <Card className="focus-panel">
           <CardContent className="flex gap-3 p-4">
             <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-warning" />
             <div>
@@ -159,15 +161,15 @@ export default async function TeamPage({
         </Card>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
+      <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Участники</CardTitle>
             <CardDescription>Личные планы остаются личными, команда видит общий прогресс и вклад</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {stats.memberStats.map((member) => (
-              <div key={member.userId} className="rounded-md border p-3">
+              <div key={member.userId} className="list-row">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="font-semibold">{member.name}</div>
@@ -190,7 +192,7 @@ export default async function TeamPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Командные риски</CardTitle>
             <CardDescription>Задачи с самым большим отставанием</CardDescription>
@@ -198,7 +200,7 @@ export default async function TeamPage({
           <CardContent className="space-y-3">
             {stats.riskTasks.length ? (
               stats.riskTasks.map((task) => (
-                <div key={`${task.userId}-${task.title}`} className="rounded-md border p-3">
+                <div key={`${task.userId}-${task.title}`} className="list-row">
                   <div className="text-sm font-semibold">{task.title}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{task.memberName}</div>
                   <div className="mt-2 flex items-center justify-between text-sm">
@@ -216,10 +218,10 @@ export default async function TeamPage({
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
         <CreateTeamCard />
 
-        <Card>
+        <Card className="section-panel">
           <CardHeader>
             <CardTitle>Приглашения</CardTitle>
             <CardDescription>Отправьте ссылку другу, он войдет и присоединится к команде</CardDescription>
@@ -253,7 +255,7 @@ export default async function TeamPage({
             {invites.length ? (
               <div className="space-y-2">
                 {invites.slice(0, 5).map((invite) => (
-                  <div key={invite.id} className="rounded-md border p-3 text-sm">
+                  <div key={invite.id} className="list-row text-sm">
                     <div className="font-medium">{invite.email || "Ссылка без email"}</div>
                     <div className="text-xs text-muted-foreground">
                       Роль: {invite.role === "admin" ? "администратор" : "участник"} · до {new Date(invite.expires_at).toLocaleDateString("ru-RU")}
@@ -284,7 +286,7 @@ export default async function TeamPage({
 
 function CreateTeamCard() {
   return (
-    <Card>
+    <Card className="section-panel">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />
@@ -311,11 +313,10 @@ function CreateTeamCard() {
 
 function KpiCard({ title, value, detail }: { title: string; value: string; detail: string }) {
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="relative p-4">
-        <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+    <Card className="metric-card">
+      <CardContent className="relative p-0">
         <div className="text-sm font-medium text-muted-foreground">{title}</div>
-        <div className="mt-3 text-3xl font-semibold tracking-normal md:text-4xl">{value}</div>
+        <div className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">{value}</div>
         <div className="mt-2 text-sm leading-5 text-muted-foreground">{detail}</div>
       </CardContent>
     </Card>

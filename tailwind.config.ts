@@ -74,7 +74,15 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)"
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "Arial", "sans-serif"]
+        sans: [
+          "ui-sans-serif",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "sans-serif"
+        ]
       }
     }
   },
