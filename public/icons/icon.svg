@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Трекер план факт">
+  <rect width="512" height="512" rx="112" fill="#2563eb"/>
+  <path d="M142 274l68 68 160-178" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M128 384h256" stroke="#bfdbfe" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="160" cy="146" r="24" fill="#f59e0b"/>
+  <circle cx="256" cy="116" r="24" fill="#22c55e"/>
+  <circle cx="352" cy="146" r="24" fill="#a855f7"/>
+</svg>

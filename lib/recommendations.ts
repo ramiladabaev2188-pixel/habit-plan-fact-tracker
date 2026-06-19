@@ -1,0 +1,170 @@
+import type { DailyStat, TaskStat, WeeklyReport } from "@/lib/metrics";
+
+export type CategoryRisk = {
+  categoryId: string;
+  categoryName: string;
+  completion: number;
+  planScore: number;
+  factScore: number;
+  requiredPerDay?: number;
+  forecastPercent?: number;
+};
+
+export type MonthlyInsightInput = {
+  monthCompletion: number;
+  forecastPercent: number;
+  taskStats: TaskStat[];
+  categoryStats: CategoryRisk[];
+  zeroFactDays: DailyStat[];
+};
+
+export function getMainFocusTask(taskStats: TaskStat[]) {
+  return [...taskStats]
+    .filter((task) => task.planScore > 0)
+    .sort((a, b) => {
+      if (b.requiredPerDay !== a.requiredPerDay) {
+        return b.requiredPerDay - a.requiredPerDay;
+      }
+
+      return b.gapScore - a.gapScore;
+    })[0] ?? null;
+}
+
+export function getRiskTasks(taskStats: TaskStat[], limit = 5) {
+  return [...taskStats]
+    .filter((task) => task.planScore > 0 && task.completion < 0.8)
+    .sort((a, b) => {
+      if (a.completion !== b.completion) {
+        return a.completion - b.completion;
+      }
+
+      return b.gapScore - a.gapScore;
+    })
+    .slice(0, limit);
+}
+
+export function getStrongTasks(taskStats: TaskStat[], limit = 5) {
+  return [...taskStats]
+    .filter((task) => task.planScore > 0 && task.completion >= 0.8)
+    .sort((a, b) => b.completion - a.completion)
+    .slice(0, limit);
+}
+
+export function getCategoryRisks(categoryStats: CategoryRisk[], limit = 3) {
+  return [...categoryStats]
+    .filter((category) => category.planScore > 0 && category.completion < 0.8)
+    .sort((a, b) => a.completion - b.completion)
+    .slice(0, limit);
+}
+
+export function generateDailyRecommendations({
+  dailyStat,
+  taskStats
+}: {
+  dailyStat: DailyStat;
+  taskStats: TaskStat[];
+}) {
+  const recommendations: string[] = [];
+  const focus = getMainFocusTask(taskStats);
+
+  if (dailyStat.planScore <= 0) {
+    recommendations.push("На сегодня нет плана — можно закрыть легкую поддерживающую задачу.");
+  } else if (dailyStat.completion < 0.6) {
+    recommendations.push("День сильно ниже плана — начните с одной задачи с самым большим весом.");
+  } else if (dailyStat.completion < 0.8) {
+    recommendations.push("До правила 80% осталось немного — доберите факт по коротким задачам.");
+  } else {
+    recommendations.push("День держится в норме — закрепите результат без перегруза.");
+  }
+
+  if (focus) {
+    recommendations.push(`Главный фокус: ${focus.title} (${focus.requiredPerDay} балла/день).`);
+  }
+
+  return recommendations;
+}
+
+export function generateWeeklyRecommendations(week: WeeklyReport) {
+  const recommendations: string[] = [];
+
+  if (week.planScore <= 0) {
+    return ["В неделе нет плана — используйте ее для восстановления или подготовки."];
+  }
+
+  if (week.completion < 0.8) {
+    recommendations.push("Неделя ниже 80% — сократите лишнее и верните регулярность по базовым задачам.");
+  } else {
+    recommendations.push("Недельный темп рабочий — повторите текущий ритм на следующей неделе.");
+  }
+
+  if (week.weakTasks[0]) {
+    recommendations.push(`Главная просадка недели: ${week.weakTasks[0].title}.`);
+  }
+
+  if (week.strongTasks[0]) {
+    recommendations.push(`Сильная опора недели: ${week.strongTasks[0].title}.`);
+  }
+
+  return recommendations;
+}
+
+export function generateMonthlyInsights(stats: MonthlyInsightInput) {
+  const insights: string[] = [];
+  const focus = getMainFocusTask(stats.taskStats);
+  const categoryRisk = getCategoryRisks(stats.categoryStats, 1)[0];
+
+  if (stats.monthCompletion < 0.8) {
+    insights.push("Текущий факт ниже правила 80% — фокус на закрытии плановых дней.");
+  }
+
+  if (stats.forecastPercent < 0.8) {
+    insights.push("Прогноз ниже цели — нужно усилить задачи с большим весом.");
+  }
+
+  if (focus) {
+    insights.push(`Главная задача на сегодня: ${focus.title} (${focus.requiredPerDay} балла/день).`);
+  }
+
+  if (categoryRisk && categoryRisk.completion < 0.6) {
+    insights.push(`Категория ${categoryRisk.categoryName} проседает сильнее всего.`);
+  }
+
+  if (stats.zeroFactDays.length > 0) {
+    insights.push(`Есть ${stats.zeroFactDays.length} дней с планом и нулевым фактом.`);
+  }
+
+  if (stats.monthCompletion >= 0.8) {
+    insights.push("Месяц идет по целевому правилу 80%+.");
+  }
+
+  return insights;
+}
+
+export function getNextActions(stats: MonthlyInsightInput) {
+  const actions: string[] = [];
+  const riskTasks = getRiskTasks(stats.taskStats, 3);
+  const focus = getMainFocusTask(stats.taskStats);
+  const categoryRisks = getCategoryRisks(stats.categoryStats, 2);
+
+  if (focus) {
+    actions.push(`Поставить первым делом задачу “${focus.title}”.`);
+  }
+
+  if (riskTasks.length > 0) {
+    actions.push(`Пересобрать план по задачам риска: ${riskTasks.map((task) => task.title).join(", ")}.`);
+  }
+
+  if (categoryRisks.length > 0) {
+    actions.push(`Выделить отдельный слот на категории: ${categoryRisks.map((item) => item.categoryName).join(", ")}.`);
+  }
+
+  if (stats.zeroFactDays.length > 0) {
+    actions.push("Разобрать дни с нулевым фактом и записать причину в заметках.");
+  }
+
+  if (actions.length === 0) {
+    actions.push("Сохранить текущий ритм и не повышать план резко.");
+  }
+
+  return actions;
+}

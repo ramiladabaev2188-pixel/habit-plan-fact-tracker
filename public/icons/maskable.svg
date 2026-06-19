@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Трекер план факт">
+  <rect width="512" height="512" fill="#2563eb"/>
+  <circle cx="256" cy="256" r="196" fill="#1d4ed8"/>
+  <path d="M146 274l66 66 154-172" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M134 386h244" stroke="#dbeafe" stroke-width="26" stroke-linecap="round"/>
+</svg>

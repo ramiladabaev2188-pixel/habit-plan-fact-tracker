@@ -1,0 +1,1743 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { getMonthTitle } from "@/lib/dates/month";
+import { calculateScore } from "@/lib/metrics";
+import {
+  copyMonthTemplate,
+  generatePlanFromRule,
+  mergeApprovedPlanRows
+} from "@/lib/planning";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
+import {
+  categorySchema,
+  categoryUpdateSchema,
+  copyMonthTemplateSchema,
+  dailyNoteSchema,
+  entityIdSchema,
+  factValueSchema,
+  goalSchema,
+  importPreviewSchema,
+  monthSchema,
+  noteSchema,
+  planGenerationSchema,
+  planValueSchema,
+  preferencesSchema,
+  settingsSchema,
+  taskActiveSchema,
+  taskSchema,
+  taskUpdateSchema,
+  teamInviteSchema,
+  teamInviteTokenSchema,
+  teamSchema,
+  leaveTeamSchema
+} from "@/lib/validators/tracker";
+import type { PlanningRuleMode } from "@/types/domain";
+
+type DailyEntryInput = {
+  taskId: string;
+  actualValue: number;
+  note?: string;
+};
+
+type SaveDailyFactsInput = {
+  monthId: string;
+  date: string;
+  entries: DailyEntryInput[];
+  dailyNote?: {
+    content?: string;
+    mood?: string;
+    energy?: number | "";
+  };
+};
+
+type SaveDailyFactsResult = {
+  ok: boolean;
+  error?: string;
+};
+
+type ImportedPayload = {
+  categories?: Array<Record<string, unknown>>;
+  tasks?: Array<Record<string, unknown>>;
+  months?: Array<Record<string, unknown>>;
+  daily_plans?: Array<Record<string, unknown>>;
+  daily_facts?: Array<Record<string, unknown>>;
+  goals?: Array<Record<string, unknown>>;
+  goal_tasks?: Array<Record<string, unknown>>;
+  notes?: Array<Record<string, unknown>>;
+  task_planning_rules?: Array<Record<string, unknown>>;
+  daily_notes?: Array<Record<string, unknown>>;
+  user_preferences?: Record<string, unknown> | null;
+};
+
+export async function signInAction(formData: FormData) {
+  const supabase = await createClient();
+  const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    redirect(`/login?message=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect("/dashboard");
+}
+
+export async function signUpAction(formData: FormData) {
+  const supabase = await createClient();
+  const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const name = String(formData.get("name") ?? "");
+  const origin = await getRequestOrigin();
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: `${origin}/dashboard`,
+      data: { name }
+    }
+  });
+
+  if (error) {
+    redirect(`/login?message=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect("/dashboard");
+}
+
+export async function signOutAction() {
+  if (!isSupabaseConfigured()) {
+    redirect("/login");
+  }
+
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
+}
+
+export async function createMonthAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = monthSchema.parse({
+    year: formData.get("year"),
+    month: formData.get("month"),
+    title: formData.get("title")
+  });
+
+  const { data: preferences } = await supabase
+    .from("user_preferences")
+    .select("default_month_target")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const { error } = await supabase.from("months").upsert(
+    {
+      user_id: userId,
+      year: parsed.year,
+      month: parsed.month,
+      title: parsed.title || getMonthTitle(parsed.year, parsed.month),
+      target_percent: Number(preferences?.default_month_target ?? 0.8)
+    },
+    { onConflict: "user_id,year,month" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function copyMonthFromTemplateAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = copyMonthTemplateSchema.parse({
+    sourceMonthId: formData.get("sourceMonthId"),
+    year: formData.get("year"),
+    month: formData.get("month"),
+    title: formData.get("title"),
+    copyAllTasks: formData.has("copyAllTasks"),
+    onlyActive: formData.has("onlyActive"),
+    excludeTasksWithoutPlan: formData.has("excludeTasksWithoutPlan"),
+    keepCategories: formData.has("keepCategories"),
+    keepGoalLinks: formData.has("keepGoalLinks")
+  });
+
+  const { data: sourceMonth, error: sourceError } = await supabase
+    .from("months")
+    .select("*")
+    .eq("id", parsed.sourceMonthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (sourceError || !sourceMonth) {
+    throw new Error(sourceError?.message ?? "Месяц-шаблон не найден");
+  }
+
+  const { data: targetMonth, error: targetError } = await supabase
+    .from("months")
+    .upsert(
+      {
+        user_id: userId,
+        year: parsed.year,
+        month: parsed.month,
+        title: parsed.title,
+        status: "draft",
+        target_percent: Number(sourceMonth.target_percent)
+      },
+      { onConflict: "user_id,year,month" }
+    )
+    .select("*")
+    .single();
+
+  if (targetError || !targetMonth) {
+    throw new Error(targetError?.message ?? "Новый месяц не создан");
+  }
+
+  const [{ data: sourcePlans, error: plansError }, { data: tasks, error: tasksError }, { data: rules, error: rulesError }] =
+    await Promise.all([
+      supabase.from("daily_plans").select("*").eq("month_id", sourceMonth.id),
+      supabase.from("tasks").select("*").eq("user_id", userId),
+      supabase.from("task_planning_rules").select("*").eq("user_id", userId)
+    ]);
+
+  if (plansError || tasksError || rulesError) {
+    throw new Error(plansError?.message ?? tasksError?.message ?? rulesError?.message ?? "Не удалось прочитать шаблон");
+  }
+
+  const copied = copyMonthTemplate({
+    targetMonth,
+    sourcePlans: sourcePlans ?? [],
+    tasks: (tasks ?? []).map((task) => ({
+      ...task,
+      weight: Number(task.weight)
+    })),
+    rules: (rules ?? []).map((rule) => ({
+      ...rule,
+      default_planned_value: Number(rule.default_planned_value),
+      times_per_month: rule.times_per_month === null ? null : Number(rule.times_per_month)
+    })),
+    options: parsed
+  });
+
+  if (copied.rows.length > 0) {
+    const { error: insertPlansError } = await supabase
+      .from("daily_plans")
+      .upsert(copied.rows, { onConflict: "month_id,task_id,date" });
+
+    if (insertPlansError) {
+      throw new Error(insertPlansError.message);
+    }
+  }
+
+  const copiedTaskIds = new Set(copied.tasks.map((task) => task.id));
+  const copiedRules = (rules ?? [])
+    .filter((rule) => copiedTaskIds.has(rule.task_id))
+    .map((rule) => ({
+      user_id: userId,
+      task_id: rule.task_id,
+      mode: rule.mode,
+      weekdays: rule.weekdays,
+      specific_dates: rule.specific_dates,
+      times_per_month: rule.times_per_month,
+      default_planned_value: rule.default_planned_value
+    }));
+
+  if (copiedRules.length > 0) {
+    const { error: rulesCopyError } = await supabase
+      .from("task_planning_rules")
+      .upsert(copiedRules, { onConflict: "user_id,task_id" });
+
+    if (rulesCopyError) {
+      throw new Error(rulesCopyError.message);
+    }
+  }
+
+  if (parsed.keepGoalLinks) {
+    await copyGoalLinksForTasks(copiedTaskIds);
+  }
+
+  revalidateTracker();
+  redirect(`/planner?month=${targetMonth.id}`);
+}
+
+export async function createCategoryAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = categorySchema.parse({
+    name: formData.get("name"),
+    color: formData.get("color")
+  });
+
+  const { error } = await supabase.from("categories").upsert(
+    {
+      user_id: userId,
+      name: parsed.name,
+      color: parsed.color
+    },
+    { onConflict: "user_id,name" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function updateCategoryAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = categoryUpdateSchema.parse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    color: formData.get("color")
+  });
+
+  const { error } = await supabase
+    .from("categories")
+    .update({
+      name: parsed.name,
+      color: parsed.color
+    })
+    .eq("id", parsed.id)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function deleteCategoryAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const categoryId = entityIdSchema.parse(formData.get("id"));
+
+  const { error } = await supabase
+    .from("categories")
+    .delete()
+    .eq("id", categoryId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function createTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = taskSchema.parse({
+    categoryId: formData.get("categoryId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    weight: formData.get("weight")
+  });
+
+  const { error } = await supabase.from("tasks").upsert(
+    {
+      user_id: userId,
+      category_id: parsed.categoryId,
+      title: parsed.title,
+      description: parsed.description || null,
+      weight: parsed.weight,
+      is_active: true
+    },
+    { onConflict: "user_id,title" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function updateTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = taskUpdateSchema.parse({
+    id: formData.get("id"),
+    categoryId: formData.get("categoryId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    weight: formData.get("weight")
+  });
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      category_id: parsed.categoryId,
+      title: parsed.title,
+      description: parsed.description || null,
+      weight: parsed.weight
+    })
+    .eq("id", parsed.id)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function setTaskActiveAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = taskActiveSchema.parse({
+    id: formData.get("id"),
+    isActive: formData.get("isActive")
+  });
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ is_active: parsed.isActive })
+    .eq("id", parsed.id)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function deleteTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const taskId = entityIdSchema.parse(formData.get("id"));
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function generatePlanAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = planGenerationSchema.parse({
+    monthId: formData.get("monthId"),
+    taskId: formData.get("taskId"),
+    mode: formData.get("mode"),
+    plannedValue: formData.get("plannedValue"),
+    weekdays: formData.getAll("weekdays"),
+    timesPerMonth: formData.get("timesPerMonth") || undefined,
+    specificDates: String(formData.get("specificDates") ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  });
+
+  const [{ data: month, error: monthError }, { data: task, error: taskError }] =
+    await Promise.all([
+      supabase.from("months").select("*").eq("id", parsed.monthId).eq("user_id", userId).single(),
+      supabase.from("tasks").select("*").eq("id", parsed.taskId).eq("user_id", userId).single()
+    ]);
+
+  if (monthError || taskError || !month || !task) {
+    throw new Error(monthError?.message ?? taskError?.message ?? "Месяц или задача не найдены");
+  }
+
+  if (month.status === "closed") {
+    throw new Error("Закрытый месяц нельзя редактировать. Сначала разблокируйте месяц.");
+  }
+
+  const { data: existingPlans, error: existingError } = await supabase
+    .from("daily_plans")
+    .select("*")
+    .eq("month_id", parsed.monthId)
+    .eq("task_id", parsed.taskId);
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  const rulePayload = {
+    user_id: userId,
+    task_id: parsed.taskId,
+    mode: parsed.mode,
+    weekdays: parsed.mode === "specific_weekdays" ? parsed.weekdays : null,
+    specific_dates: parsed.mode === "specific_dates" ? parsed.specificDates : null,
+    times_per_month: parsed.mode === "n_times_per_month" ? parsed.timesPerMonth ?? 1 : null,
+    default_planned_value: parsed.plannedValue
+  };
+  const generatedRows = generatePlanFromRule(month, { id: task.id, weight: Number(task.weight) }, {
+    taskId: parsed.taskId,
+    mode: parsed.mode,
+    weekdays: parsed.weekdays,
+    specificDates: parsed.specificDates,
+    timesPerMonth: parsed.timesPerMonth,
+    defaultPlannedValue: parsed.plannedValue
+  });
+  const rows = mergeApprovedPlanRows(
+    generatedRows,
+    existingPlans ?? [],
+    month.status === "approved"
+  );
+
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from("daily_plans")
+      .upsert(rows, { onConflict: "month_id,task_id,date" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const { error: ruleError } = await supabase
+    .from("task_planning_rules")
+    .upsert(rulePayload, { onConflict: "user_id,task_id" });
+
+  if (ruleError) {
+    throw new Error(ruleError.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function savePlanGridAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("*")
+    .eq("id", monthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (monthError || !month) {
+    throw new Error(monthError?.message ?? "Месяц не найден");
+  }
+
+  if (month.status === "closed") {
+    throw new Error("Закрытый месяц нельзя редактировать. Сначала разблокируйте месяц.");
+  }
+
+  const { data: tasks, error: tasksError } = await supabase
+    .from("tasks")
+    .select("id, weight")
+    .eq("user_id", userId);
+
+  if (tasksError) {
+    throw new Error(tasksError.message);
+  }
+
+  const { data: existingPlans, error: plansError } = await supabase
+    .from("daily_plans")
+    .select("task_id, date, planned_value")
+    .eq("month_id", monthId);
+
+  if (plansError) {
+    throw new Error(plansError.message);
+  }
+
+  const taskWeights = new Map((tasks ?? []).map((task) => [task.id, Number(task.weight)]));
+  const existing = new Map(
+    (existingPlans ?? []).map((plan) => [
+      `${plan.task_id}:${plan.date}`,
+      Number(plan.planned_value)
+    ])
+  );
+  const rows: {
+    month_id: string;
+    task_id: string;
+    date: string;
+    planned_value: number;
+    planned_score: number;
+  }[] = [];
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("plan:")) {
+      continue;
+    }
+
+    const [, taskId, date] = key.split(":");
+    const plannedValue = planValueSchema.parse(Number(value));
+    const currentValue = existing.get(`${taskId}:${date}`) ?? 0;
+    const safeValue =
+      month.status === "approved"
+        ? Math.max(plannedValue, currentValue)
+        : plannedValue;
+
+    rows.push({
+      month_id: monthId,
+      task_id: taskId,
+      date,
+      planned_value: safeValue,
+      planned_score: calculateScore(safeValue, taskWeights.get(taskId) ?? 0)
+    });
+  }
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("daily_plans")
+    .upsert(rows, { onConflict: "month_id,task_id,date" });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function approveMonthAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { error } = await supabase
+    .from("months")
+    .update({ status: "approved" })
+    .eq("id", monthId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function closeMonthAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { error } = await supabase
+    .from("months")
+    .update({ status: "closed" })
+    .eq("id", monthId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function unlockMonthAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { error } = await supabase
+    .from("months")
+    .update({ status: "approved", closed_at: null })
+    .eq("id", monthId)
+    .eq("user_id", userId)
+    .eq("status", "closed");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function lockApprovedPlansAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("id, status")
+    .eq("id", monthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (monthError || !month) {
+    throw new Error(monthError?.message ?? "Месяц не найден");
+  }
+
+  if (month.status === "draft") {
+    throw new Error("Черновик не нужно блокировать");
+  }
+
+  const { error } = await supabase
+    .from("daily_plans")
+    .update({ locked: true })
+    .eq("month_id", monthId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<SaveDailyFactsResult> {
+  const { supabase, userId } = await requireUser();
+  const parsedMonthId = entityIdSchema.safeParse(input.monthId);
+
+  if (!parsedMonthId.success) {
+    return {
+      ok: false,
+      error: "Месяц не выбран. Обновите страницу и выберите месяц заново."
+    };
+  }
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("id, status")
+    .eq("id", parsedMonthId.data)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (monthError || !month) {
+    return {
+      ok: false,
+      error: monthError?.message ?? "Месяц не найден. Обновите страницу или создайте новый месяц."
+    };
+  }
+
+  if (month.status === "closed") {
+    return {
+      ok: false,
+      error: "Закрытый месяц нельзя редактировать. Сначала разблокируйте месяц."
+    };
+  }
+
+  const { data: tasks, error: tasksError } = await supabase
+    .from("tasks")
+    .select("id, weight")
+    .eq("user_id", userId);
+
+  if (tasksError) {
+    return { ok: false, error: tasksError.message };
+  }
+
+  const taskWeights = new Map((tasks ?? []).map((task) => [task.id, Number(task.weight)]));
+  const rows = input.entries.map((entry) => {
+    const actualValue = factValueSchema.parse(entry.actualValue);
+
+    return {
+      month_id: input.monthId,
+      task_id: entry.taskId,
+      date: input.date,
+      actual_value: actualValue,
+      actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
+      note: entry.note?.trim() || null
+    };
+  });
+
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from("daily_facts")
+      .upsert(rows, { onConflict: "month_id,task_id,date" });
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
+  if (input.dailyNote) {
+    const parsedNote = dailyNoteSchema.parse(input.dailyNote);
+    const { error: noteError } = await supabase
+      .from("daily_notes")
+      .upsert(
+        {
+          user_id: userId,
+          month_id: input.monthId,
+          date: input.date,
+          content: parsedNote.content ?? "",
+          mood: parsedNote.mood || null,
+          energy: typeof parsedNote.energy === "number" ? parsedNote.energy : null
+        },
+        { onConflict: "user_id,date" }
+      );
+
+    if (noteError) {
+      return { ok: false, error: noteError.message };
+    }
+  }
+
+  revalidateTracker();
+  return { ok: true };
+}
+
+export async function updateSettingsAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = settingsSchema.parse({
+    name: formData.get("name"),
+    timezone: formData.get("timezone"),
+    targetPercent: formData.get("targetPercent")
+  });
+  const monthId = String(formData.get("monthId") ?? "");
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      name: parsed.name,
+      timezone: parsed.timezone
+    })
+    .eq("id", userId);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (monthId) {
+    const { error: monthError } = await supabase
+      .from("months")
+      .update({ target_percent: parsed.targetPercent })
+      .eq("id", monthId)
+      .eq("user_id", userId);
+
+    if (monthError) {
+      throw new Error(monthError.message);
+    }
+  }
+
+  revalidateTracker();
+}
+
+export async function updatePreferencesAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = preferencesSchema.parse({
+    dailyReminderEnabled: formData.has("dailyReminderEnabled"),
+    dailyReminderTime: formData.get("dailyReminderTime"),
+    riskAlertsEnabled: formData.has("riskAlertsEnabled"),
+    theme: formData.get("theme"),
+    defaultMonthTarget: formData.get("defaultMonthTarget")
+  });
+
+  const { error } = await supabase
+    .from("user_preferences")
+    .upsert(
+      {
+        user_id: userId,
+        daily_reminder_enabled: parsed.dailyReminderEnabled,
+        daily_reminder_time: parsed.dailyReminderTime,
+        risk_alerts_enabled: parsed.riskAlertsEnabled,
+        theme: parsed.theme,
+        default_month_target: parsed.defaultMonthTarget
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function createTeamAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamSchema.parse({
+    name: formData.get("name"),
+    description: formData.get("description")
+  });
+
+  const { data: team, error: teamError } = await supabase
+    .from("teams")
+    .insert({
+      owner_id: userId,
+      name: parsed.name,
+      description: parsed.description || null
+    })
+    .select("id")
+    .single();
+
+  if (teamError || !team) {
+    throw new Error(teamError?.message ?? "Команда не создана");
+  }
+
+  const { error: memberError } = await supabase.from("team_members").insert({
+    team_id: team.id,
+    user_id: userId,
+    role: "owner",
+    status: "active",
+    joined_at: new Date().toISOString()
+  });
+
+  if (memberError) {
+    throw new Error(memberError.message);
+  }
+
+  revalidatePath("/team");
+  redirect(`/team?team=${team.id}`);
+}
+
+export async function createTeamInviteAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamInviteSchema.parse({
+    teamId: formData.get("teamId"),
+    email: formData.get("email"),
+    role: formData.get("role") || "member"
+  });
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", parsed.teamId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const { data: team, error: teamError } = await supabase
+    .from("teams")
+    .select("owner_id")
+    .eq("id", parsed.teamId)
+    .maybeSingle();
+
+  const canInvite =
+    team?.owner_id === userId ||
+    (membership && ["owner", "admin"].includes(String(membership.role)));
+
+  if (membershipError || teamError || !canInvite) {
+    throw new Error(membershipError?.message ?? "Недостаточно прав для приглашения");
+  }
+
+  const token = crypto.randomUUID().replaceAll("-", "");
+  const { error } = await supabase.from("team_invites").insert({
+    team_id: parsed.teamId,
+    created_by: userId,
+    token,
+    email: parsed.email || null,
+    role: parsed.role
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+  redirect(`/team?team=${parsed.teamId}&invite=${token}`);
+}
+
+export async function acceptTeamInviteAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const token = teamInviteTokenSchema.parse(formData.get("token"));
+
+  const { data: invite, error: inviteError } = await supabase
+    .from("team_invites")
+    .select("team_id, role, expires_at, accepted_at, accepted_by")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (inviteError || !invite) {
+    throw new Error(inviteError?.message ?? "Приглашение не найдено");
+  }
+
+  const { data: existingMember, error: existingMemberError } = await supabase
+    .from("team_members")
+    .select("role, status")
+    .eq("team_id", invite.team_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingMemberError) {
+    throw new Error(existingMemberError.message);
+  }
+
+  if (existingMember?.status === "active") {
+    redirect(`/team?team=${invite.team_id}`);
+  }
+
+  if (invite.accepted_at) {
+    throw new Error("Это приглашение уже использовано");
+  }
+
+  if (new Date(invite.expires_at).getTime() < Date.now()) {
+    throw new Error("Срок действия приглашения истек");
+  }
+
+  const { error: memberError } = await supabase.from("team_members").upsert(
+    {
+      team_id: invite.team_id,
+      user_id: userId,
+      role: invite.role,
+      status: "active",
+      joined_at: new Date().toISOString()
+    },
+    { onConflict: "team_id,user_id" }
+  );
+
+  if (memberError) {
+    throw new Error(memberError.message);
+  }
+
+  const { error: acceptError } = await supabase
+    .from("team_invites")
+    .update({ accepted_at: new Date().toISOString(), accepted_by: userId })
+    .eq("token", token);
+
+  if (acceptError) {
+    throw new Error(acceptError.message);
+  }
+
+  revalidatePath("/team");
+  redirect(`/team?team=${invite.team_id}`);
+}
+
+export async function leaveTeamAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = leaveTeamSchema.parse({
+    teamId: formData.get("teamId")
+  });
+
+  const { data: team } = await supabase
+    .from("teams")
+    .select("owner_id")
+    .eq("id", parsed.teamId)
+    .maybeSingle();
+
+  if (team?.owner_id === userId) {
+    throw new Error("Владелец не может выйти из команды. Сначала передайте владение или удалите команду.");
+  }
+
+  const { error } = await supabase
+    .from("team_members")
+    .update({ status: "left" })
+    .eq("team_id", parsed.teamId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+  redirect("/team");
+}
+
+export async function upsertGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = goalSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    description: formData.get("description"),
+    type: formData.get("type"),
+    status: formData.get("status"),
+    priority: formData.get("priority"),
+    startDate: formData.get("startDate"),
+    dueDate: formData.get("dueDate"),
+    taskIds: formData.getAll("taskIds")
+  });
+  const goalFields = {
+    user_id: userId,
+    title: parsed.title,
+    description: parsed.description || null,
+    type: parsed.type,
+    status: parsed.status,
+    priority: parsed.priority,
+    start_date: parsed.startDate || null,
+    due_date: parsed.dueDate || null
+  };
+  const { data: goal, error } = parsed.id
+    ? await supabase
+        .from("goals")
+        .update({
+          title: goalFields.title,
+          description: goalFields.description,
+          type: goalFields.type,
+          status: goalFields.status,
+          priority: goalFields.priority,
+          start_date: goalFields.start_date,
+          due_date: goalFields.due_date
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+        .select("id")
+        .single()
+    : await supabase.from("goals").insert(goalFields).select("id").single();
+
+  if (error || !goal) {
+    throw new Error(error?.message ?? "Цель не сохранена");
+  }
+
+  await syncGoalTasks(goal.id, parsed.taskIds);
+  revalidateTracker();
+}
+
+export async function archiveGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const goalId = String(formData.get("goalId") ?? "");
+
+  const { error } = await supabase
+    .from("goals")
+    .update({ status: "archived" })
+    .eq("id", goalId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function deleteGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const goalId = String(formData.get("goalId") ?? "");
+
+  const { error } = await supabase
+    .from("goals")
+    .delete()
+    .eq("id", goalId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function upsertNoteAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = noteSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    content: formData.get("content"),
+    tags: formData.get("tags"),
+    monthId: formData.get("monthId"),
+    taskId: formData.get("taskId"),
+    goalId: formData.get("goalId"),
+    date: formData.get("date")
+  });
+  const noteFields = {
+    user_id: userId,
+    title: parsed.title || null,
+    content: parsed.content,
+    tags: parseTags(parsed.tags),
+    month_id: parsed.monthId || null,
+    task_id: parsed.taskId || null,
+    goal_id: parsed.goalId || null,
+    date: parsed.date || null
+  };
+  const { error } = parsed.id
+    ? await supabase
+        .from("notes")
+        .update({
+          title: noteFields.title,
+          content: noteFields.content,
+          tags: noteFields.tags,
+          month_id: noteFields.month_id,
+          task_id: noteFields.task_id,
+          goal_id: noteFields.goal_id,
+          date: noteFields.date
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("notes").insert(noteFields);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function deleteNoteAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const noteId = String(formData.get("noteId") ?? "");
+
+  const { error } = await supabase
+    .from("notes")
+    .delete()
+    .eq("id", noteId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function importJsonAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = importPreviewSchema.parse({
+    payload: formData.get("payload")
+  });
+
+  if (formData.get("confirmImport") !== "on") {
+    throw new Error("Подтвердите импорт, чтобы изменить данные.");
+  }
+
+  let payload: ImportedPayload;
+
+  try {
+    payload = JSON.parse(parsed.payload) as ImportedPayload;
+  } catch {
+    throw new Error("JSON не удалось прочитать.");
+  }
+
+  const categories = Array.isArray(payload.categories) ? payload.categories : [];
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const months = Array.isArray(payload.months) ? payload.months : [];
+  const goals = Array.isArray(payload.goals) ? payload.goals : [];
+  const goalTasks = Array.isArray(payload.goal_tasks) ? payload.goal_tasks : [];
+  const plans = Array.isArray(payload.daily_plans) ? payload.daily_plans : [];
+  const facts = Array.isArray(payload.daily_facts) ? payload.daily_facts : [];
+  const notes = Array.isArray(payload.notes) ? payload.notes : [];
+  const planningRules = Array.isArray(payload.task_planning_rules) ? payload.task_planning_rules : [];
+  const dailyNotes = Array.isArray(payload.daily_notes) ? payload.daily_notes : [];
+  const importedPreferences = payload.user_preferences;
+
+  if (importedPreferences) {
+    const { error } = await supabase
+      .from("user_preferences")
+      .upsert(
+        {
+          user_id: userId,
+          daily_reminder_enabled: asBoolean(importedPreferences.daily_reminder_enabled, false),
+          daily_reminder_time: asString(importedPreferences.daily_reminder_time, "21:00"),
+          risk_alerts_enabled: asBoolean(importedPreferences.risk_alerts_enabled, true),
+          theme: parseThemePreference(asString(importedPreferences.theme)),
+          default_month_target: asNumber(importedPreferences.default_month_target, 0.8)
+        },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const categoryMap = new Map<string, string>();
+  const taskMap = new Map<string, string>();
+  const monthMap = new Map<string, string>();
+  const goalMap = new Map<string, string>();
+  const monthStatuses: {
+    id: string;
+    status: "draft" | "approved" | "closed";
+    approved_at: string | null;
+    closed_at: string | null;
+  }[] = [];
+
+  for (const category of categories) {
+    const name = asString(category.name);
+
+    if (!name) {
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("categories")
+      .upsert(
+        {
+          user_id: userId,
+          name,
+          color: asString(category.color, "#2563eb"),
+          sort_order: asNumberOrNull(category.sort_order)
+        },
+        { onConflict: "user_id,name" }
+      )
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Категория не импортирована");
+    }
+
+    const oldId = asString(category.id);
+    if (oldId) {
+      categoryMap.set(oldId, data.id);
+    }
+  }
+
+  for (const task of tasks) {
+    const title = asString(task.title);
+
+    if (!title) {
+      continue;
+    }
+
+    const oldCategoryId = asString(task.category_id);
+    const { data, error } = await supabase
+      .from("tasks")
+      .upsert(
+        {
+          user_id: userId,
+          category_id: oldCategoryId ? categoryMap.get(oldCategoryId) ?? null : null,
+          title,
+          description: asNullableString(task.description),
+          weight: asNumber(task.weight, 1),
+          is_active: asBoolean(task.is_active, true)
+        },
+        { onConflict: "user_id,title" }
+      )
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Задача не импортирована");
+    }
+
+    const oldId = asString(task.id);
+    if (oldId) {
+      taskMap.set(oldId, data.id);
+    }
+  }
+
+  for (const month of months) {
+    const year = asNumber(month.year, 0);
+    const monthNumber = asNumber(month.month, 0);
+
+    if (!year || !monthNumber) {
+      continue;
+    }
+
+    const originalStatus = parseMonthStatus(asString(month.status));
+    const { data, error } = await supabase
+      .from("months")
+      .upsert(
+        {
+          user_id: userId,
+          year,
+          month: monthNumber,
+          title: asString(month.title, getMonthTitle(year, monthNumber)),
+          status: "draft",
+          target_percent: asNumber(month.target_percent, 0.8),
+          approved_at: null,
+          closed_at: null
+        },
+        { onConflict: "user_id,year,month" }
+      )
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Месяц не импортирован");
+    }
+
+    const oldId = asString(month.id);
+    if (oldId) {
+      monthMap.set(oldId, data.id);
+    }
+    monthStatuses.push({
+      id: data.id,
+      status: originalStatus,
+      approved_at: asNullableString(month.approved_at),
+      closed_at: asNullableString(month.closed_at)
+    });
+  }
+
+  for (const goal of goals) {
+    const title = asString(goal.title);
+
+    if (!title) {
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("goals")
+      .insert({
+        user_id: userId,
+        title,
+        description: asNullableString(goal.description),
+        type: parseGoalType(asString(goal.type)),
+        status: parseGoalStatus(asString(goal.status)),
+        priority: parseGoalPriority(asString(goal.priority)),
+        start_date: asNullableString(goal.start_date),
+        due_date: asNullableString(goal.due_date)
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Цель не импортирована");
+    }
+
+    const oldId = asString(goal.id);
+    if (oldId) {
+      goalMap.set(oldId, data.id);
+    }
+  }
+
+  const mappedPlans = plans
+    .map((plan) => {
+      const monthId = monthMap.get(asString(plan.month_id));
+      const taskId = taskMap.get(asString(plan.task_id));
+
+      if (!monthId || !taskId) {
+        return null;
+      }
+
+      const plannedValue = asNumber(plan.planned_value, 0);
+      return {
+        month_id: monthId,
+        task_id: taskId,
+        date: asString(plan.date),
+        planned_value: plannedValue,
+        planned_score: calculateScore(plannedValue, 1),
+        locked: false
+      };
+    })
+    .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan?.date));
+
+  if (mappedPlans.length > 0) {
+    const { error } = await supabase
+      .from("daily_plans")
+      .upsert(mappedPlans, { onConflict: "month_id,task_id,date" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const mappedFacts = facts
+    .map((fact) => {
+      const monthId = monthMap.get(asString(fact.month_id));
+      const taskId = taskMap.get(asString(fact.task_id));
+
+      if (!monthId || !taskId) {
+        return null;
+      }
+
+      const actualValue = asNumber(fact.actual_value, 0);
+      return {
+        month_id: monthId,
+        task_id: taskId,
+        date: asString(fact.date),
+        actual_value: actualValue,
+        actual_score: calculateScore(actualValue, 1),
+        note: asNullableString(fact.note)
+      };
+    })
+    .filter((fact): fact is NonNullable<typeof fact> => Boolean(fact?.date));
+
+  if (mappedFacts.length > 0) {
+    const { error } = await supabase
+      .from("daily_facts")
+      .upsert(mappedFacts, { onConflict: "month_id,task_id,date" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const mappedRules = planningRules
+    .map((rule) => {
+      const taskId = taskMap.get(asString(rule.task_id));
+
+      if (!taskId) {
+        return null;
+      }
+
+      return {
+        user_id: userId,
+        task_id: taskId,
+        mode: parsePlanningMode(asString(rule.mode)),
+        weekdays: asNumberArray(rule.weekdays),
+        specific_dates: asStringArray(rule.specific_dates),
+        times_per_month: asNumberOrNull(rule.times_per_month),
+        default_planned_value: asNumber(rule.default_planned_value, 1)
+      };
+    })
+    .filter((rule): rule is NonNullable<typeof rule> => Boolean(rule));
+
+  if (mappedRules.length > 0) {
+    const { error } = await supabase
+      .from("task_planning_rules")
+      .upsert(mappedRules, { onConflict: "user_id,task_id" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const mappedGoalTasks = goalTasks
+    .map((goalTask) => {
+      const goalId = goalMap.get(asString(goalTask.goal_id));
+      const taskId = taskMap.get(asString(goalTask.task_id));
+
+      if (!goalId || !taskId) {
+        return null;
+      }
+
+      return {
+        goal_id: goalId,
+        task_id: taskId
+      };
+    })
+    .filter((goalTask): goalTask is NonNullable<typeof goalTask> => Boolean(goalTask));
+
+  if (mappedGoalTasks.length > 0) {
+    const { error } = await supabase
+      .from("goal_tasks")
+      .upsert(mappedGoalTasks, { onConflict: "goal_id,task_id" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const mappedNotes = notes.map((note) => ({
+    user_id: userId,
+    month_id: monthMap.get(asString(note.month_id)) ?? null,
+    task_id: taskMap.get(asString(note.task_id)) ?? null,
+    goal_id: goalMap.get(asString(note.goal_id)) ?? null,
+    date: asNullableString(note.date),
+    title: asNullableString(note.title),
+    content: asString(note.content),
+    tags: asStringArray(note.tags)
+  })).filter((note) => note.content);
+
+  if (mappedNotes.length > 0) {
+    const { error } = await supabase.from("notes").insert(mappedNotes);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  const mappedDailyNotes = dailyNotes
+    .map((note) => {
+      const monthId = monthMap.get(asString(note.month_id));
+
+      if (!monthId) {
+        return null;
+      }
+
+      return {
+        user_id: userId,
+        month_id: monthId,
+        date: asString(note.date),
+        content: asString(note.content),
+        mood: asNullableString(note.mood),
+        energy: asNumberOrNull(note.energy)
+      };
+    })
+    .filter((note): note is NonNullable<typeof note> => Boolean(note?.date));
+
+  if (mappedDailyNotes.length > 0) {
+    const { error } = await supabase
+      .from("daily_notes")
+      .upsert(mappedDailyNotes, { onConflict: "user_id,date" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  for (const month of monthStatuses) {
+    const { error } = await supabase
+      .from("months")
+      .update({
+        status: month.status,
+        approved_at: month.approved_at,
+        closed_at: month.closed_at
+      })
+      .eq("id", month.id)
+      .eq("user_id", userId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  revalidateTracker();
+  redirect("/settings?import=done");
+}
+
+async function requireUser() {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase не настроен. Заполните .env.local.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    redirect("/login");
+  }
+
+  return { supabase, userId: user.id };
+}
+
+async function getRequestOrigin() {
+  const headersList = await headers();
+  const host = headersList.get("host") ?? "localhost:3000";
+  const forwardedProto = headersList.get("x-forwarded-proto");
+  const protocol = forwardedProto ?? (host.includes("localhost") ? "http" : "https");
+
+  return `${protocol}://${host}`;
+}
+
+async function syncGoalTasks(goalId: string, taskIds: string[]) {
+  const supabase = await createClient();
+  const { error: deleteError } = await supabase
+    .from("goal_tasks")
+    .delete()
+    .eq("goal_id", goalId);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  const uniqueTaskIds = Array.from(new Set(taskIds));
+
+  if (uniqueTaskIds.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from("goal_tasks").insert(
+    uniqueTaskIds.map((taskId) => ({
+      goal_id: goalId,
+      task_id: taskId
+    }))
+  );
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+}
+
+function parseTags(value?: string) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+async function copyGoalLinksForTasks(_taskIds: Set<string>) {
+  return;
+}
+
+function asString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function asNullableString(value: unknown) {
+  const text = asString(value);
+  return text || null;
+}
+
+function asNumber(value: unknown, fallback: number) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function asNumberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function asBoolean(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value === "true";
+  }
+
+  return fallback;
+}
+
+function asStringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => asString(item))
+    .filter(Boolean);
+}
+
+function asNumberArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const values = value
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item));
+
+  return values.length ? values : null;
+}
+
+function parseMonthStatus(value: string): "draft" | "approved" | "closed" {
+  if (value === "approved" || value === "closed") {
+    return value;
+  }
+
+  return "draft";
+}
+
+function parseGoalType(value: string): "long_term" | "monthly" | "weekly" {
+  if (value === "monthly" || value === "weekly") {
+    return value;
+  }
+
+  return "long_term";
+}
+
+function parseGoalStatus(value: string): "active" | "completed" | "paused" | "archived" {
+  if (value === "completed" || value === "paused" || value === "archived") {
+    return value;
+  }
+
+  return "active";
+}
+
+function parseGoalPriority(value: string): "low" | "medium" | "high" {
+  if (value === "low" || value === "high") {
+    return value;
+  }
+
+  return "medium";
+}
+
+function parsePlanningMode(value: string): PlanningRuleMode {
+  if (
+    value === "weekdays" ||
+    value === "weekends" ||
+    value === "specific_weekdays" ||
+    value === "specific_dates" ||
+    value === "n_times_per_month" ||
+    value === "manual"
+  ) {
+    return value;
+  }
+
+  return "daily";
+}
+
+function parseThemePreference(value: string): "light" | "dark" | "system" {
+  if (value === "light" || value === "dark") {
+    return value;
+  }
+
+  return "system";
+}
+
+function revalidateTracker() {
+  revalidatePath("/dashboard");
+  revalidatePath("/planner");
+  revalidatePath("/daily");
+  revalidatePath("/calendar");
+  revalidatePath("/analytics");
+  revalidatePath("/weekly");
+  revalidatePath("/monthly-report");
+  revalidatePath("/history");
+  revalidatePath("/goals");
+  revalidatePath("/notes");
+  revalidatePath("/checks");
+  revalidatePath("/settings");
+}

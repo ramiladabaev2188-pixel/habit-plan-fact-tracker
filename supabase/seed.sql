@@ -1,0 +1,3 @@
+-- Seed is intentionally not wired to the app UI.
+-- Create personal categories, tasks, months and plans from /planner,
+-- or move data through JSON export/import in /settings.
