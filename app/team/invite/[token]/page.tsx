@@ -27,17 +27,16 @@ export default async function TeamInvitePage({
     redirect(`/login?message=${encodeURIComponent("Войдите, чтобы принять приглашение в команду")}`);
   }
 
-  const { data: invite, error } = await supabase
-    .from("team_invites")
-    .select("team_id, role, expires_at, accepted_at, accepted_by, teams(name)")
-    .eq("token", token)
-    .maybeSingle();
+  const { data: invites, error } = await supabase.rpc("get_team_invite_by_token", {
+    invite_token: token
+  });
+  const invite = invites?.[0] ?? null;
 
   if (error || !invite) {
     return <ErrorState message={error?.message ?? "Приглашение не найдено или уже недоступно"} />;
   }
 
-  const teamName = getTeamName(invite.teams);
+  const teamName = invite.team_name || "Команда";
   const { data: existingMember } = await supabase
     .from("team_members")
     .select("status")
@@ -95,16 +94,4 @@ export default async function TeamInvitePage({
       </Card>
     </div>
   );
-}
-
-function getTeamName(value: unknown) {
-  if (Array.isArray(value)) {
-    return value[0]?.name ?? "Команда";
-  }
-
-  if (value && typeof value === "object" && "name" in value) {
-    return String(value.name || "Команда");
-  }
-
-  return "Команда";
 }

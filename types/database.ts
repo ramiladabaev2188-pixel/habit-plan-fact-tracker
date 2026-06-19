@@ -507,6 +507,28 @@ export type Database = {
         Args: { user_a: string; user_b: string };
         Returns: boolean;
       };
+      get_team_invite_by_token: {
+        Args: { invite_token: string };
+        Returns: {
+          team_id: string;
+          role: "admin" | "member";
+          expires_at: string;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          team_name: string;
+        }[];
+      };
+      accept_team_invite_by_token: {
+        Args: { invite_token: string };
+        Returns: {
+          team_id: string;
+          already_member: boolean;
+        }[];
+      };
+      leave_team: {
+        Args: { checked_team_id: string };
+        Returns: void;
+      };
     };
     Enums: {
       [_ in never]: never;

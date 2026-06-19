@@ -918,98 +918,66 @@ export async function createTeamInviteAction(formData: FormData) {
 }
 
 export async function acceptTeamInviteAction(formData: FormData) {
-  const { supabase, userId } = await requireUser();
+  const { supabase } = await requireUser();
   const token = teamInviteTokenSchema.parse(formData.get("token"));
 
-  const { data: invite, error: inviteError } = await supabase
-    .from("team_invites")
-    .select("team_id, role, expires_at, accepted_at, accepted_by")
-    .eq("token", token)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("accept_team_invite_by_token", {
+    invite_token: token
+  });
+  const result = data?.[0];
 
-  if (inviteError || !invite) {
-    throw new Error(inviteError?.message ?? "Приглашение не найдено");
-  }
-
-  const { data: existingMember, error: existingMemberError } = await supabase
-    .from("team_members")
-    .select("role, status")
-    .eq("team_id", invite.team_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (existingMemberError) {
-    throw new Error(existingMemberError.message);
-  }
-
-  if (existingMember?.status === "active") {
-    redirect(`/team?team=${invite.team_id}`);
-  }
-
-  if (invite.accepted_at) {
-    throw new Error("Это приглашение уже использовано");
-  }
-
-  if (new Date(invite.expires_at).getTime() < Date.now()) {
-    throw new Error("Срок действия приглашения истек");
-  }
-
-  const { error: memberError } = await supabase.from("team_members").upsert(
-    {
-      team_id: invite.team_id,
-      user_id: userId,
-      role: invite.role,
-      status: "active",
-      joined_at: new Date().toISOString()
-    },
-    { onConflict: "team_id,user_id" }
-  );
-
-  if (memberError) {
-    throw new Error(memberError.message);
-  }
-
-  const { error: acceptError } = await supabase
-    .from("team_invites")
-    .update({ accepted_at: new Date().toISOString(), accepted_by: userId })
-    .eq("token", token);
-
-  if (acceptError) {
-    throw new Error(acceptError.message);
+  if (error || !result) {
+    throw new Error(getTeamInviteErrorMessage(error?.message));
   }
 
   revalidatePath("/team");
-  redirect(`/team?team=${invite.team_id}`);
+  redirect(`/team?team=${result.team_id}`);
+}
+
+function getTeamInviteErrorMessage(message?: string) {
+  if (message?.includes("AUTH_REQUIRED")) {
+    return "Войдите, чтобы принять приглашение";
+  }
+
+  if (message?.includes("INVITE_ALREADY_USED")) {
+    return "Это приглашение уже использовано";
+  }
+
+  if (message?.includes("INVITE_EXPIRED")) {
+    return "Срок действия приглашения истек";
+  }
+
+  return "Приглашение не найдено";
 }
 
 export async function leaveTeamAction(formData: FormData) {
-  const { supabase, userId } = await requireUser();
+  const { supabase } = await requireUser();
   const parsed = leaveTeamSchema.parse({
     teamId: formData.get("teamId")
   });
 
-  const { data: team } = await supabase
-    .from("teams")
-    .select("owner_id")
-    .eq("id", parsed.teamId)
-    .maybeSingle();
-
-  if (team?.owner_id === userId) {
-    throw new Error("Владелец не может выйти из команды. Сначала передайте владение или удалите команду.");
-  }
-
-  const { error } = await supabase
-    .from("team_members")
-    .update({ status: "left" })
-    .eq("team_id", parsed.teamId)
-    .eq("user_id", userId);
+  const { error } = await supabase.rpc("leave_team", {
+    checked_team_id: parsed.teamId
+  });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(getLeaveTeamErrorMessage(error.message));
   }
 
   revalidatePath("/team");
   redirect("/team");
+}
+
+function getLeaveTeamErrorMessage(message?: string) {
+  if (message?.includes("OWNER_CANNOT_LEAVE")) {
+    return "Владелец не может выйти из команды. Сначала передайте владение или удалите команду.";
+  }
+
+  if (message?.includes("AUTH_REQUIRED")) {
+    return "Войдите, чтобы выйти из команды";
+  }
+
+  return "Не удалось выйти из команды";
 }
 
 export async function upsertGoalAction(formData: FormData) {
