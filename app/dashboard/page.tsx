@@ -265,13 +265,34 @@ function KpiCard({
   tone: "over" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-4 p-5">
+    <Card className="overflow-hidden">
+      <CardContent className="relative space-y-4 p-5">
+        <div
+          className={cn(
+            "absolute inset-x-0 top-0 h-1",
+            tone === "over" && "bg-over",
+            tone === "success" && "bg-success",
+            tone === "warning" && "bg-warning",
+            tone === "danger" && "bg-destructive",
+            tone === "info" && "bg-info"
+          )}
+        />
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-muted-foreground">{label}</div>
-          <div className="rounded-md bg-muted p-2 text-primary">{icon}</div>
+          <div className="text-sm font-medium text-muted-foreground">{label}</div>
+          <div
+            className={cn(
+              "rounded-md p-2",
+              tone === "over" && "bg-over/10 text-over",
+              tone === "success" && "bg-success/10 text-success",
+              tone === "warning" && "bg-warning/15 text-warning",
+              tone === "danger" && "bg-destructive/10 text-destructive",
+              tone === "info" && "bg-info/10 text-info"
+            )}
+          >
+            {icon}
+          </div>
         </div>
-        <div className="text-3xl font-semibold tracking-normal">{value}</div>
+        <div className="text-3xl font-semibold tracking-normal md:text-4xl">{value}</div>
         <Progress
           value={Math.min(progress, 1.2) * 100}
           indicatorClassName={cn(

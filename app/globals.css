@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --background: 210 25% 98%;
-    --foreground: 215 28% 17%;
+    --background: 210 33% 97%;
+    --foreground: 221 39% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 215 28% 17%;
+    --card-foreground: 221 39% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 215 28% 17%;
-    --primary: 214 84% 48%;
+    --popover-foreground: 221 39% 13%;
+    --primary: 158 64% 32%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 173 56% 92%;
-    --secondary-foreground: 181 68% 19%;
-    --muted: 214 22% 92%;
-    --muted-foreground: 215 16% 45%;
-    --accent: 39 95% 88%;
-    --accent-foreground: 32 85% 24%;
+    --secondary: 202 76% 93%;
+    --secondary-foreground: 207 70% 24%;
+    --muted: 213 28% 92%;
+    --muted-foreground: 218 16% 42%;
+    --accent: 38 94% 88%;
+    --accent-foreground: 31 87% 22%;
     --destructive: 0 76% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 20% 86%;
-    --input: 214 20% 86%;
-    --ring: 214 84% 48%;
+    --border: 214 25% 84%;
+    --input: 214 25% 84%;
+    --ring: 158 64% 32%;
     --success: 151 66% 38%;
     --success-foreground: 0 0% 100%;
     --warning: 42 96% 52%;
@@ -35,18 +35,18 @@
   }
 
   .dark {
-    --background: 220 22% 10%;
-    --foreground: 210 22% 94%;
-    --card: 220 18% 14%;
+    --background: 222 26% 9%;
+    --foreground: 210 24% 94%;
+    --card: 222 20% 13%;
     --card-foreground: 210 22% 94%;
     --popover: 220 18% 14%;
     --popover-foreground: 210 22% 94%;
-    --primary: 210 95% 62%;
-    --primary-foreground: 220 22% 10%;
-    --secondary: 178 34% 18%;
-    --secondary-foreground: 172 72% 82%;
-    --muted: 220 16% 20%;
-    --muted-foreground: 215 14% 70%;
+    --primary: 156 72% 47%;
+    --primary-foreground: 222 26% 9%;
+    --secondary: 206 37% 18%;
+    --secondary-foreground: 201 91% 82%;
+    --muted: 221 17% 20%;
+    --muted-foreground: 217 15% 70%;
     --accent: 36 80% 23%;
     --accent-foreground: 40 95% 83%;
     --destructive: 0 72% 51%;
@@ -70,6 +70,26 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    min-height: 100vh;
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.28) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.22) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-attachment: fixed;
+  }
+
+  .dark body {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.18) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.14) 1px, transparent 1px);
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  :focus-visible {
+    outline-offset: 3px;
   }
 
   input[type="number"]::-webkit-inner-spin-button,
@@ -79,6 +99,26 @@
 }
 
 @layer components {
+  .app-surface {
+    @apply border bg-card/95 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.75)] backdrop-blur;
+  }
+
+  .page-panel {
+    @apply rounded-lg border bg-card/92 shadow-sm backdrop-blur;
+  }
+
+  .page-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-primary;
+  }
+
+  .page-title {
+    @apply text-2xl font-semibold tracking-normal text-foreground md:text-3xl;
+  }
+
+  .page-subtitle {
+    @apply max-w-2xl text-sm leading-6 text-muted-foreground;
+  }
+
   .status-success {
     @apply bg-success/10 text-success ring-1 ring-success/25 dark:bg-success/20;
   }

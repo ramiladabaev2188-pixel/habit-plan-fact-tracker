@@ -311,11 +311,12 @@ function CreateTeamCard() {
 
 function KpiCard({ title, value, detail }: { title: string; value: string; detail: string }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-sm text-muted-foreground">{title}</div>
-        <div className="mt-3 text-3xl font-semibold">{value}</div>
-        <div className="mt-2 text-sm text-muted-foreground">{detail}</div>
+    <Card className="overflow-hidden">
+      <CardContent className="relative p-4">
+        <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+        <div className="text-sm font-medium text-muted-foreground">{title}</div>
+        <div className="mt-3 text-3xl font-semibold tracking-normal md:text-4xl">{value}</div>
+        <div className="mt-2 text-sm leading-5 text-muted-foreground">{detail}</div>
       </CardContent>
     </Card>
   );

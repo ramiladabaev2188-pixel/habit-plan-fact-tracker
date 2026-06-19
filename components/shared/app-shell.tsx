@@ -34,7 +34,7 @@ const navItems = [
   { href: "/planner", label: "План", icon: ClipboardList },
   { href: "/analytics", label: "Аналитика", icon: LineChart },
   { href: "/weekly", label: "Неделя", icon: FileText },
-  { href: "/monthly-report", label: "Отчет месяца", icon: Presentation },
+  { href: "/monthly-report", label: "Отчет", icon: Presentation },
   { href: "/history", label: "История", icon: History },
   { href: "/team", label: "Команда", icon: Users },
   { href: "/goals", label: "Цели", icon: Flag },
@@ -52,14 +52,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b bg-background/92 backdrop-blur">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-40 border-b bg-background/88 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between gap-3">
-          <Link href="/dashboard" className="min-w-0">
-            <span className="block text-base font-semibold tracking-normal">
-              Трекер план/факт
+          <Link href="/dashboard" className="group flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-[0_16px_34px_-24px_hsl(var(--primary))]">
+              ПФ
             </span>
-            <span className="block text-xs text-muted-foreground">Привычки месяца</span>
+            <span className="min-w-0">
+              <span className="block truncate text-base font-semibold tracking-normal">
+                Трекер план/факт
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                Привычки, планы и командный ритм
+              </span>
+            </span>
           </Link>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -72,10 +79,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="container pb-28 pt-5 md:pb-8">{children}</main>
+      <main className="container pb-28 pt-5 md:pb-10">{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/96 shadow-lg backdrop-blur md:hidden">
-        <div className="flex overflow-x-auto">
+      <nav className="fixed inset-x-3 bottom-3 z-50 rounded-lg border bg-card/95 p-1 shadow-[0_24px_70px_-36px_rgba(15,23,42,0.85)] backdrop-blur-xl md:hidden">
+        <div className="flex gap-1 overflow-x-auto pb-0.5">
           {navItems.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
@@ -84,43 +91,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-label={item.label}
                 className={cn(
-                  "flex h-16 min-w-20 flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground",
-                  active && "text-primary"
+                  "flex h-14 min-w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-muted-foreground transition-colors",
+                  active && "bg-primary text-primary-foreground shadow-[0_14px_30px_-22px_hsl(var(--primary))]"
                 )}
               >
                 <Icon className="h-5 w-5" />
-                <span>{item.label}</span>
+                <span className="max-w-full truncate">{item.label}</span>
               </Link>
             );
           })}
         </div>
       </nav>
 
-      <aside className="fixed left-4 top-24 hidden w-56 md:block">
-        <div className="rounded-lg border bg-card p-2 shadow-sm">
-          {navItems.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const Icon = item.icon;
+      <aside className="fixed left-5 top-24 hidden w-60 md:block">
+        <div className="app-surface overflow-hidden rounded-lg">
+          <div className="border-b p-4">
+            <div className="page-kicker">Личный продукт</div>
+            <div className="mt-1 text-sm font-semibold">План, факт, команда</div>
+          </div>
+          <div className="max-h-[calc(100vh-11rem)] space-y-1 overflow-y-auto p-2">
+            {navItems.map((item) => {
+              const active = pathname.startsWith(item.href);
+              const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                  active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground",
+                    active && "bg-primary text-primary-foreground shadow-[0_14px_30px_-22px_hsl(var(--primary))] hover:bg-primary hover:text-primary-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </aside>
 
-      <div className="hidden md:block md:pl-64" aria-hidden />
       <PwaInstallPrompt />
       <Suspense fallback={null}>
         <Toaster />

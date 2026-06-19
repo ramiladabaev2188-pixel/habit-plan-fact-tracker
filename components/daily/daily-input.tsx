@@ -262,8 +262,8 @@ export function DailyInput({
       </Card>
 
       {groups.map((group) => (
-        <details key={group.category?.id ?? "without-category"} open className="group rounded-lg border bg-card">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+        <details key={group.category?.id ?? "without-category"} open className="group overflow-hidden rounded-lg border bg-card/95 shadow-[0_18px_60px_-48px_rgba(15,23,42,0.75)]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/35 p-4">
             <div className="flex min-w-0 items-center gap-2">
               {group.category ? (
                 <span
@@ -287,7 +287,7 @@ export function DailyInput({
                     : "border-destructive/40 bg-destructive/10";
 
               return (
-                <Card key={item.task.id} className={cn("transition-colors", stateClass)}>
+                <Card key={item.task.id} className={cn("overflow-hidden transition-colors", stateClass)}>
                   <CardContent className="space-y-4 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -312,7 +312,10 @@ export function DailyInput({
                           key={value}
                           type="button"
                           variant={current === value ? "default" : "outline"}
-                          className="h-12 px-2 text-base sm:h-11 sm:text-sm"
+                          className={cn(
+                            "h-12 px-2 text-base sm:h-11 sm:text-sm",
+                            current === value && "scale-[1.02]"
+                          )}
                           disabled={readOnly}
                           onClick={() => setFactValue(index, item.task.id, value)}
                         >

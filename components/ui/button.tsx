@@ -4,18 +4,18 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        default: "bg-primary text-primary-foreground shadow-[0_10px_24px_-16px_hsl(var(--primary))] hover:bg-primary/90 hover:shadow-[0_14px_30px_-18px_hsl(var(--primary))]",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/75",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-destructive text-destructive-foreground shadow-[0_10px_24px_-16px_hsl(var(--destructive))] hover:bg-destructive/90",
         outline:
-          "border border-input bg-background hover:bg-muted hover:text-foreground",
+          "border border-input bg-background/80 hover:border-primary/40 hover:bg-primary/5 hover:text-foreground",
         ghost: "hover:bg-muted hover:text-foreground",
-        success: "bg-success text-success-foreground hover:bg-success/90",
+        success: "bg-success text-success-foreground shadow-[0_10px_24px_-16px_hsl(var(--success))] hover:bg-success/90",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90",
         over: "bg-over text-over-foreground hover:bg-over/90"
       },
