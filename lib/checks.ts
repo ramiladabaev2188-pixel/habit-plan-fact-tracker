@@ -1,4 +1,4 @@
-import type { DailyFact, DailyNote, DailyPlan, Month, Task } from "@/types/domain";
+import type { DailyFact, DailyPlan, Month, Task } from "@/types/domain";
 
 export type QualityIssue = {
   id: string;
@@ -134,28 +134,16 @@ export function findDuplicateFacts(facts: DailyFact[]) {
   );
 }
 
-export function findClosedMonthEditableFacts(month: Month, facts: DailyFact[], dailyNotes: DailyNote[]) {
-  if (month.status !== "closed") {
-    return [];
-  }
-
-  return facts.length || dailyNotes.length
-    ? []
-    : [];
-}
-
 export function runDataQualityChecks({
   month,
   tasks,
   plans,
-  facts,
-  dailyNotes
+  facts
 }: {
   month: Month;
   tasks: Task[];
   plans: DailyPlan[];
   facts: DailyFact[];
-  dailyNotes: DailyNote[];
 }) {
   const checks: QualityCheck[] = [
     toCheck("missing-facts", "Дни с планом и отсутствующим фактом", findMissingFacts(month, plans, facts), "critical"),
@@ -167,7 +155,16 @@ export function runDataQualityChecks({
     toCheck("duplicate-plans", "Дубли планов", findDuplicatePlans(plans), "critical"),
     toCheck("duplicate-facts", "Дубли фактов", findDuplicateFacts(facts), "critical"),
     toCheck("unlocked-approved", "Утвержденный месяц с незаблокированными планами", findUnlockedApprovedPlans(month, plans), "warning"),
-    toCheck("closed-editable", "Закрытый месяц с редактируемыми фактами", findClosedMonthEditableFacts(month, facts, dailyNotes), "critical")
+    {
+      id: "closed-write-protection",
+      title: "Защита закрытого месяца",
+      status: "clean",
+      summary:
+        month.status === "closed"
+          ? "Факты и дневные заметки этого месяца защищены на уровне базы данных."
+          : "После закрытия факты и дневные заметки будут защищены на уровне базы данных.",
+      issues: []
+    }
   ];
 
   return checks;

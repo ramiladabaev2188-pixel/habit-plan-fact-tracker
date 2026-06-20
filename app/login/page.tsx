@@ -12,9 +12,10 @@ import { createClient } from "@/lib/supabase/server";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ message?: string; next?: string }>;
 }) {
   const params = await searchParams;
+  const next = getSafeNextPath(params.next);
 
   if (!isSupabaseConfigured()) {
     return <SetupNotice />;
@@ -26,7 +27,7 @@ export default async function LoginPage({
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/dashboard");
+    redirect(next ?? "/dashboard");
   }
 
   return (
@@ -57,6 +58,7 @@ export default async function LoginPage({
           </CardHeader>
           <CardContent className="space-y-6">
             <form action={signInAction} className="space-y-4">
+              {next ? <input type="hidden" name="next" value={next} /> : null}
               <div className="space-y-2">
                 <Label htmlFor="email">Почта</Label>
                 <Input id="email" name="email" type="email" required autoComplete="email" />
@@ -80,6 +82,7 @@ export default async function LoginPage({
             <Separator />
 
             <form action={signUpAction} className="space-y-4">
+              {next ? <input type="hidden" name="next" value={next} /> : null}
               <div className="space-y-2">
                 <Label htmlFor="name">Имя</Label>
                 <Input id="name" name="name" required autoComplete="name" />
@@ -101,4 +104,12 @@ export default async function LoginPage({
       </div>
     </main>
   );
+}
+
+function getSafeNextPath(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+
+  return value.startsWith("/team/invite/") ? value : null;
 }

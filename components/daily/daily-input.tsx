@@ -10,7 +10,6 @@ import { saveDailyFactsAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,12 +18,19 @@ import { cn, formatScore } from "@/lib/utils";
 import type { Category, DailyFact, DailyNote, DailyPlan, Task } from "@/types/domain";
 
 const factOptions = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+const energyOptions = [
+  { value: 1, label: "Очень низко" },
+  { value: 2, label: "Ниже обычного" },
+  { value: 3, label: "Ровно" },
+  { value: 4, label: "Хорошо" },
+  { value: 5, label: "Высоко" }
+];
 
 const dailyFormSchema = z.object({
   entries: z.array(
     z.object({
       taskId: z.string().uuid(),
-      actualValue: factValueSchema,
+      actualValue: factValueSchema.nullable(),
       note: z.string().optional()
     })
   ),
@@ -67,7 +73,7 @@ export function DailyInput({
     () => ({
       entries: items.map((item) => ({
         taskId: item.task.id,
-        actualValue: item.fact?.actual_value ?? 0,
+        actualValue: item.fact?.actual_value ?? null,
         note: item.fact?.note ?? ""
       })),
       dailyNote: {
@@ -84,6 +90,7 @@ export function DailyInput({
   });
   const watchedEntries = form.watch("entries");
   const watchedDailyNote = form.watch("dailyNote");
+  const selectedEnergy = Number(watchedDailyNote?.energy) || null;
   const filledCount = filledTaskIds.size;
   const hasUnfilled = filledCount < items.length;
   const yesterdayByTask = useMemo(
@@ -130,10 +137,17 @@ export function DailyInput({
   }, [form, markFilled]);
 
   const save = useCallback(async (values: DailyForm) => {
+    const completedEntries = values.entries
+      .filter((entry): entry is typeof entry & { actualValue: number } => entry.actualValue !== null)
+      .map((entry) => ({
+        ...entry,
+        actualValue: entry.actualValue
+      }));
+
     const result = await saveDailyFactsAction({
         monthId,
         date,
-        entries: values.entries,
+        entries: completedEntries,
         dailyNote: values.dailyNote
       })
       .catch((error: unknown) => ({
@@ -278,9 +292,12 @@ export function DailyInput({
           </summary>
           <div className="space-y-3 border-t border-border/80 p-3">
             {group.rows.map(({ item, index }) => {
-              const current = watchedEntries[index]?.actualValue ?? 0;
+              const current = watchedEntries[index]?.actualValue ?? null;
+              const hasFact = current !== null;
               const stateClass =
-                current >= item.plan.planned_value
+                !hasFact
+                  ? "border-border bg-muted/30"
+                  : current >= item.plan.planned_value
                   ? "border-success/50 bg-success/10"
                   : current > 0
                     ? "border-warning/60 bg-warning/10"
@@ -299,7 +316,7 @@ export function DailyInput({
                       </div>
                       <div className="text-right text-sm">
                         <div className="font-semibold">
-                          {formatScore(current * item.task.weight)} / {formatScore(item.plan.planned_score)}
+                          {hasFact ? formatScore(current * item.task.weight) : "—"} / {formatScore(item.plan.planned_score)}
                         </div>
                         <div className="text-muted-foreground">факт / план</div>
                       </div>
@@ -325,9 +342,9 @@ export function DailyInput({
                     </div>
 
                     <Textarea
-                      placeholder="Комментарий к задаче"
+                      placeholder={hasFact ? "Комментарий к задаче" : "Сначала выберите факт"}
                       className="min-h-16"
-                      disabled={readOnly}
+                      disabled={readOnly || !hasFact}
                       {...form.register(`entries.${index}.note`)}
                     />
                     {form.formState.errors.entries?.[index]?.actualValue ? (
@@ -345,7 +362,7 @@ export function DailyInput({
 
       <Card className="section-panel">
         <CardHeader>
-          <CardTitle>Заметка дня</CardTitle>
+          <CardTitle>Ритм дня</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_180px_160px]">
           <div className="space-y-2 lg:col-span-3">
@@ -369,16 +386,25 @@ export function DailyInput({
               <option value="сильный день">Сильный день</option>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="daily-energy">Энергия</Label>
-            <Input
-              id="daily-energy"
-              type="number"
-              min={1}
-              max={5}
-              disabled={readOnly}
-              {...form.register("dailyNote.energy")}
-            />
+          <div className="space-y-2 lg:col-span-3">
+            <Label>Энергия</Label>
+            <div className="grid grid-cols-5 gap-2" role="group" aria-label="Оценка энергии">
+              {energyOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  variant={selectedEnergy === option.value ? "default" : "outline"}
+                  className="h-auto min-h-14 flex-col gap-1 px-2 py-2 text-xs"
+                  disabled={readOnly}
+                  aria-label={`Энергия: ${option.value}, ${option.label}`}
+                  onClick={() => form.setValue("dailyNote.energy", option.value, { shouldDirty: true })}
+                >
+                  <span className="text-base font-semibold">{option.value}</span>
+                  <span className="hidden leading-tight sm:inline">{option.label}</span>
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Личная оценка самочувствия, не медицинский показатель.</p>
           </div>
         </CardContent>
       </Card>

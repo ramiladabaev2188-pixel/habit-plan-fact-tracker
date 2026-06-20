@@ -24,7 +24,8 @@ export default async function TeamInvitePage({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/login?message=${encodeURIComponent("Войдите, чтобы принять приглашение в команду")}`);
+    const next = `/team/invite/${token}`;
+    redirect(`/login?next=${encodeURIComponent(next)}&message=${encodeURIComponent("Войдите, чтобы принять приглашение в команду")}`);
   }
 
   const { data: invites, error } = await supabase.rpc("get_team_invite_by_token", {

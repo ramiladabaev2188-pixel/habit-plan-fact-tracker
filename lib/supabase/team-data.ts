@@ -4,7 +4,6 @@ import type {
   DailyFact,
   DailyPlan,
   Month,
-  Profile,
   Task,
   Team,
   TeamInvite,
@@ -16,16 +15,24 @@ import {
   normalizeDailyFact,
   normalizeDailyPlan,
   normalizeMonth,
-  normalizeProfile,
   normalizeTask
 } from "./data";
+
+export type TeamMemberProfile = {
+  id: string;
+  name: string;
+  email?: string | null;
+  timezone?: string | null;
+  created_at?: string;
+};
 
 export type TeamDashboardData = {
   user: User;
   teams: Team[];
   selectedTeam: Team | null;
   members: TeamMember[];
-  profiles: Profile[];
+  profiles: TeamMemberProfile[];
+  shareTaskDetails: boolean;
   invites: TeamInvite[];
   year: number;
   month: number;
@@ -123,6 +130,7 @@ export async function loadTeamDashboardData({
         selectedTeam: null,
         members: [],
         profiles: [],
+        shareTaskDetails: true,
         invites: [],
         year: selectedYear,
         month: selectedMonthNumber,
@@ -135,7 +143,7 @@ export async function loadTeamDashboardData({
     };
   }
 
-  const [membersResult, invitesResult] = await Promise.all([
+  const [membersResult, invitesResult, preferenceResult] = await Promise.all([
     supabase
       .from("team_members")
       .select("*")
@@ -147,10 +155,20 @@ export async function loadTeamDashboardData({
       .select("*")
       .eq("team_id", selectedTeam.id)
       .is("accepted_at", null)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("team_member_preferences")
+      .select("share_task_details")
+      .eq("team_id", selectedTeam.id)
+      .eq("user_id", user.id)
+      .maybeSingle()
   ]);
 
-  const teamError = membersResult.error?.message ?? invitesResult.error?.message ?? null;
+  const teamError =
+    membersResult.error?.message ??
+    invitesResult.error?.message ??
+    preferenceResult.error?.message ??
+    null;
 
   if (teamError) {
     return { configured: true, user, data: null, error: teamError };
@@ -161,7 +179,7 @@ export async function loadTeamDashboardData({
 
   const [profilesResult, monthsResult, tasksResult] = userIds.length
     ? await Promise.all([
-        supabase.from("profiles").select("*").in("id", userIds),
+        supabase.rpc("get_team_member_profiles", { checked_team_id: selectedTeam.id }),
         supabase
           .from("months")
           .select("*")
@@ -213,7 +231,8 @@ export async function loadTeamDashboardData({
       teams,
       selectedTeam,
       members,
-      profiles: (profilesResult.data ?? []).map(normalizeProfile),
+      profiles: (profilesResult.data ?? []) as TeamMemberProfile[],
+      shareTaskDetails: preferenceResult.data?.share_task_details ?? true,
       invites: (invitesResult.data ?? []) as TeamInvite[],
       year: selectedYear,
       month: selectedMonthNumber,

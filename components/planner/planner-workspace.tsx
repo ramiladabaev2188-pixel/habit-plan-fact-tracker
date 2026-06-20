@@ -374,25 +374,20 @@ export function PlannerWorkspace({
             </Button>
             <div className="lg:col-span-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
               <label className="planner-choice">
-                <input type="checkbox" name="copyAllTasks" />
-                Копировать все задачи
+                <input type="radio" name="taskScope" value="active" defaultChecked />
+                Только активные задачи
               </label>
               <label className="planner-choice">
-                <input type="checkbox" name="onlyActive" defaultChecked />
-                Только активные
+                <input type="radio" name="taskScope" value="all" />
+                Все задачи
               </label>
               <label className="planner-choice">
                 <input type="checkbox" name="excludeTasksWithoutPlan" defaultChecked />
                 Исключить без плана
               </label>
-              <label className="planner-choice">
-                <input type="checkbox" name="keepCategories" defaultChecked />
-                Сохранить категории
-              </label>
-              <label className="planner-choice">
-                <input type="checkbox" name="keepGoalLinks" defaultChecked />
-                Связи с целями
-              </label>
+              <p className="planner-choice col-span-1 sm:col-span-2 lg:col-span-2">
+                Категории и связи с целями сохраняются автоматически: задачи в приложении общие для ваших месяцев.
+              </p>
             </div>
           </form>
         </CardContent>

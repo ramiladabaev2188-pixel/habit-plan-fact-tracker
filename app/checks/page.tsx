@@ -33,7 +33,7 @@ export default async function ChecksPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { selectedMonth, months, tasks, plans, facts, dailyNotes } = result.data;
+  const { selectedMonth, months, tasks, plans, facts } = result.data;
 
   if (!selectedMonth) {
     return (
@@ -47,8 +47,7 @@ export default async function ChecksPage({
     month: selectedMonth,
     tasks,
     plans,
-    facts,
-    dailyNotes: dailyNotes.filter((note) => note.month_id === selectedMonth.id)
+    facts
   });
   const criticalCount = checks.filter((check) => check.status === "critical").length;
   const warningCount = checks.filter((check) => check.status === "warning").length;

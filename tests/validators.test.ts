@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dateKeySchema,
   factValueSchema,
   planGenerationSchema,
   preferencesSchema,
@@ -43,5 +44,11 @@ describe("validators", () => {
   it("validates profile settings", () => {
     expect(settingsSchema.safeParse({ name: "Рамиль", timezone: "Asia/Yekaterinburg", targetPercent: "0.8" }).success).toBe(true);
     expect(settingsSchema.safeParse({ name: "", timezone: "Asia/Yekaterinburg", targetPercent: "0.8" }).success).toBe(false);
+  });
+
+  it("accepts only real calendar dates", () => {
+    expect(dateKeySchema.safeParse("2026-06-30").success).toBe(true);
+    expect(dateKeySchema.safeParse("2026-02-29").success).toBe(false);
+    expect(dateKeySchema.safeParse("2026-6-1").success).toBe(false);
   });
 });

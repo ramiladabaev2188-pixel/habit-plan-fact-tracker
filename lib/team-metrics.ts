@@ -1,9 +1,10 @@
 import { calculateMonthStats, calculateTaskStats } from "@/lib/metrics";
-import type { DailyFact, DailyPlan, Month, Profile, Task } from "@/types/domain";
+import type { DailyFact, DailyPlan, Month, Task } from "@/types/domain";
+import type { TeamMemberProfile } from "@/lib/supabase/team-data";
 
 export type TeamMemberSnapshot = {
   userId: string;
-  profile: Profile | null;
+  profile: TeamMemberProfile | null;
   month: Month | null;
   tasks: Task[];
   plans: DailyPlan[];
@@ -64,7 +65,7 @@ export function calculateTeamStats(snapshots: TeamMemberSnapshot[], today?: stri
 
     return {
       userId: snapshot.userId,
-      name: snapshot.profile?.name || snapshot.profile?.email || "Участник",
+      name: snapshot.profile?.name || "Участник",
       month: snapshot.month,
       planScore: stats.totalPlanScore,
       factScore: stats.currentFactScore,

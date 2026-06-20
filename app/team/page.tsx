@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Copy, Users } from "lucide-react";
-import { createTeamAction, createTeamInviteAction, leaveTeamAction } from "@/app/actions";
+import { createTeamAction, createTeamInviteAction, leaveTeamAction, updateTeamPrivacyAction } from "@/app/actions";
 import { CopyInviteLink } from "@/components/team/copy-invite-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export default async function TeamPage({
     selectedTeam,
     members,
     profiles,
+    shareTaskDetails,
     invites,
     year,
     month,
@@ -85,7 +86,7 @@ export default async function TeamPage({
             <div className="page-kicker">Совместный ритм</div>
             <h1 className="workspace-title mt-1">Команда</h1>
             <p className="workspace-subtitle">
-            Создайте команду, пригласите друзей и смотрите общий прогресс без доступа к чужому редактированию.
+            Создайте команду, пригласите друзей и смотрите общий прогресс. Личные данные редактирует только их владелец.
             </p>
           </div>
         </div>
@@ -188,7 +189,7 @@ export default async function TeamPage({
         <Card className="section-panel">
           <CardHeader>
             <CardTitle>Участники</CardTitle>
-            <CardDescription>Личные планы остаются личными, команда видит общий прогресс и вклад</CardDescription>
+            <CardDescription>Команда видит вклад, общий прогресс и задачи в риске; редактировать чужие данные нельзя.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {stats.memberStats.map((member) => (
@@ -303,6 +304,30 @@ export default async function TeamPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card className="section-panel">
+        <CardHeader>
+          <CardTitle>Приватность в команде</CardTitle>
+          <CardDescription>Вы решаете, показывать ли другим участникам названия задач, планы и факты.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updateTeamPrivacyAction} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <input type="hidden" name="teamId" value={selectedTeam.id} />
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                name="shareTaskDetails"
+                className="mt-1 h-4 w-4"
+                defaultChecked={shareTaskDetails}
+              />
+              <span>
+                Показывать команде детали моих задач и фактов. При выключении ваш вклад не попадет в подробную командную аналитику.
+              </span>
+            </label>
+            <Button type="submit" variant="outline">Сохранить приватность</Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

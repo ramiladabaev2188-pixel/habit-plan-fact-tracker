@@ -16,6 +16,7 @@ import {
   categorySchema,
   categoryUpdateSchema,
   copyMonthTemplateSchema,
+  dateKeySchema,
   dailyNoteSchema,
   entityIdSchema,
   factValueSchema,
@@ -39,7 +40,7 @@ import type { PlanningRuleMode } from "@/types/domain";
 
 type DailyEntryInput = {
   taskId: string;
-  actualValue: number;
+  actualValue: number | null;
   note?: string;
 };
 
@@ -77,6 +78,7 @@ export async function signInAction(formData: FormData) {
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const next = getSafeNextPath(formData.get("next"));
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -84,7 +86,7 @@ export async function signInAction(formData: FormData) {
     redirect(`/login?message=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect(next ?? "/dashboard");
 }
 
 export async function signUpAction(formData: FormData) {
@@ -93,12 +95,13 @@ export async function signUpAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const name = String(formData.get("name") ?? "");
   const origin = await getRequestOrigin();
+  const next = getSafeNextPath(formData.get("next"));
 
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${origin}/dashboard`,
+      emailRedirectTo: `${origin}${next ?? "/dashboard"}`,
       data: { name }
     }
   });
@@ -107,7 +110,7 @@ export async function signUpAction(formData: FormData) {
     redirect(`/login?message=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect(next ?? "/dashboard");
 }
 
 export async function signOutAction() {
@@ -154,16 +157,17 @@ export async function createMonthAction(formData: FormData) {
 
 export async function copyMonthFromTemplateAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
+  const taskScope = formData.get("taskScope");
   const parsed = copyMonthTemplateSchema.parse({
     sourceMonthId: formData.get("sourceMonthId"),
     year: formData.get("year"),
     month: formData.get("month"),
     title: formData.get("title"),
-    copyAllTasks: formData.has("copyAllTasks"),
-    onlyActive: formData.has("onlyActive"),
+    copyAllTasks: taskScope === "all",
+    onlyActive: taskScope !== "all",
     excludeTasksWithoutPlan: formData.has("excludeTasksWithoutPlan"),
-    keepCategories: formData.has("keepCategories"),
-    keepGoalLinks: formData.has("keepGoalLinks")
+    keepCategories: true,
+    keepGoalLinks: true
   });
 
   const { data: sourceMonth, error: sourceError } = await supabase
@@ -177,21 +181,51 @@ export async function copyMonthFromTemplateAction(formData: FormData) {
     throw new Error(sourceError?.message ?? "Месяц-шаблон не найден");
   }
 
-  const { data: targetMonth, error: targetError } = await supabase
+  const { data: existingTarget, error: existingTargetError } = await supabase
     .from("months")
-    .upsert(
-      {
-        user_id: userId,
-        year: parsed.year,
-        month: parsed.month,
-        title: parsed.title,
-        status: "draft",
-        target_percent: Number(sourceMonth.target_percent)
-      },
-      { onConflict: "user_id,year,month" }
-    )
     .select("*")
-    .single();
+    .eq("user_id", userId)
+    .eq("year", parsed.year)
+    .eq("month", parsed.month)
+    .maybeSingle();
+
+  if (existingTargetError) {
+    throw new Error(existingTargetError.message);
+  }
+
+  if (existingTarget && existingTarget.status !== "draft") {
+    throw new Error("Для этого периода уже есть утвержденный или закрытый месяц. Создайте другой период или разблокируйте его явно.");
+  }
+
+  if (existingTarget?.id === sourceMonth.id) {
+    throw new Error("Выберите другой период для нового месяца.");
+  }
+
+  const targetMonthResult = existingTarget
+    ? await supabase
+        .from("months")
+        .update({
+          title: parsed.title,
+          target_percent: Number(sourceMonth.target_percent)
+        })
+        .eq("id", existingTarget.id)
+        .eq("user_id", userId)
+        .select("*")
+        .single()
+    : await supabase
+        .from("months")
+        .insert({
+          user_id: userId,
+          year: parsed.year,
+          month: parsed.month,
+          title: parsed.title,
+          status: "draft",
+          target_percent: Number(sourceMonth.target_percent)
+        })
+        .select("*")
+        .single();
+
+  const { data: targetMonth, error: targetError } = targetMonthResult;
 
   if (targetError || !targetMonth) {
     throw new Error(targetError?.message ?? "Новый месяц не создан");
@@ -254,10 +288,6 @@ export async function copyMonthFromTemplateAction(formData: FormData) {
     if (rulesCopyError) {
       throw new Error(rulesCopyError.message);
     }
-  }
-
-  if (parsed.keepGoalLinks) {
-    await copyGoalLinksForTasks(copiedTaskIds);
   }
 
   revalidateTracker();
@@ -679,17 +709,18 @@ export async function lockApprovedPlansAction(formData: FormData) {
 export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<SaveDailyFactsResult> {
   const { supabase, userId } = await requireUser();
   const parsedMonthId = entityIdSchema.safeParse(input.monthId);
+  const parsedDate = dateKeySchema.safeParse(input.date);
 
-  if (!parsedMonthId.success) {
+  if (!parsedMonthId.success || !parsedDate.success) {
     return {
       ok: false,
-      error: "Месяц не выбран. Обновите страницу и выберите месяц заново."
+      error: "Месяц или дата выбраны некорректно. Обновите страницу и повторите попытку."
     };
   }
 
   const { data: month, error: monthError } = await supabase
     .from("months")
-    .select("id, status")
+    .select("id, status, year, month")
     .eq("id", parsedMonthId.data)
     .eq("user_id", userId)
     .maybeSingle();
@@ -708,23 +739,53 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     };
   }
 
-  const { data: tasks, error: tasksError } = await supabase
-    .from("tasks")
-    .select("id, weight")
-    .eq("user_id", userId);
+  const expectedMonthPrefix = `${String(month.year).padStart(4, "0")}-${String(month.month).padStart(2, "0")}`;
 
-  if (tasksError) {
-    return { ok: false, error: tasksError.message };
+  if (!parsedDate.data.startsWith(expectedMonthPrefix)) {
+    return { ok: false, error: "Дата должна входить в выбранный месяц." };
+  }
+
+  const entries = input.entries.filter(
+    (entry): entry is DailyEntryInput & { actualValue: number } => typeof entry.actualValue === "number"
+  );
+  const taskIds = entries.map((entry) => entry.taskId);
+
+  if (new Set(taskIds).size !== taskIds.length) {
+    return { ok: false, error: "Одна задача передана несколько раз. Обновите страницу и повторите попытку." };
+  }
+
+  const [{ data: tasks, error: tasksError }, { data: plans, error: plansError }] = await Promise.all([
+    taskIds.length
+      ? supabase.from("tasks").select("id, weight").eq("user_id", userId).in("id", taskIds)
+      : Promise.resolve({ data: [], error: null }),
+    taskIds.length
+      ? supabase
+          .from("daily_plans")
+          .select("task_id")
+          .eq("month_id", month.id)
+          .eq("date", parsedDate.data)
+          .in("task_id", taskIds)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (tasksError || plansError) {
+    return { ok: false, error: tasksError?.message ?? plansError?.message ?? "Не удалось проверить задачи дня." };
   }
 
   const taskWeights = new Map((tasks ?? []).map((task) => [task.id, Number(task.weight)]));
-  const rows = input.entries.map((entry) => {
+  const plannedTaskIds = new Set((plans ?? []).map((plan) => plan.task_id));
+
+  if (taskWeights.size !== taskIds.length || plannedTaskIds.size !== taskIds.length) {
+    return { ok: false, error: "Факт можно внести только для задачи с планом на выбранный день." };
+  }
+
+  const rows = entries.map((entry) => {
     const actualValue = factValueSchema.parse(entry.actualValue);
 
     return {
       month_id: input.monthId,
       task_id: entry.taskId,
-      date: input.date,
+      date: parsedDate.data,
       actual_value: actualValue,
       actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
       note: entry.note?.trim() || null
@@ -947,6 +1008,10 @@ function getTeamInviteErrorMessage(message?: string) {
     return "Срок действия приглашения истек";
   }
 
+  if (message?.includes("INVITE_EMAIL_MISMATCH")) {
+    return "Это приглашение создано для другого адреса электронной почты.";
+  }
+
   return "Приглашение не найдено";
 }
 
@@ -966,6 +1031,39 @@ export async function leaveTeamAction(formData: FormData) {
 
   revalidatePath("/team");
   redirect("/team");
+}
+
+export async function updateTeamPrivacyAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const teamId = entityIdSchema.parse(formData.get("teamId"));
+  const shareTaskDetails = formData.get("shareTaskDetails") === "on";
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("team_members")
+    .select("team_id")
+    .eq("team_id", teamId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    throw new Error(membershipError?.message ?? "Вы не состоите в этой команде.");
+  }
+
+  const { error } = await supabase.from("team_member_preferences").upsert(
+    {
+      team_id: teamId,
+      user_id: userId,
+      share_task_details: shareTaskDetails
+    },
+    { onConflict: "team_id,user_id" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
 }
 
 function getLeaveTeamErrorMessage(message?: string) {
@@ -1154,6 +1252,36 @@ export async function importJsonAction(formData: FormData) {
   const planningRules = Array.isArray(payload.task_planning_rules) ? payload.task_planning_rules : [];
   const dailyNotes = Array.isArray(payload.daily_notes) ? payload.daily_notes : [];
   const importedPreferences = payload.user_preferences;
+  const importedPeriodKeys = new Set(
+    months
+      .map((month) => {
+        const year = asNumber(month.year, 0);
+        const monthNumber = asNumber(month.month, 0);
+        return year && monthNumber ? `${year}-${monthNumber}` : null;
+      })
+      .filter((key): key is string => Boolean(key))
+  );
+
+  if (importedPeriodKeys.size > 0) {
+    const { data: existingMonths, error: existingMonthsError } = await supabase
+      .from("months")
+      .select("year, month, status")
+      .eq("user_id", userId);
+
+    if (existingMonthsError) {
+      throw new Error(existingMonthsError.message);
+    }
+
+    const protectedPeriod = (existingMonths ?? []).find(
+      (month) => importedPeriodKeys.has(`${month.year}-${month.month}`) && month.status !== "draft"
+    );
+
+    if (protectedPeriod) {
+      throw new Error(
+        `Импорт не изменяет утвержденные и закрытые месяцы. Сначала разблокируйте ${getMonthTitle(protectedPeriod.year, protectedPeriod.month)}.`
+      );
+    }
+  }
 
   if (importedPreferences) {
     const { error } = await supabase
@@ -1177,6 +1305,7 @@ export async function importJsonAction(formData: FormData) {
 
   const categoryMap = new Map<string, string>();
   const taskMap = new Map<string, string>();
+  const taskWeights = new Map<string, number>();
   const monthMap = new Map<string, string>();
   const goalMap = new Map<string, string>();
   const monthStatuses: {
@@ -1249,6 +1378,7 @@ export async function importJsonAction(formData: FormData) {
     if (oldId) {
       taskMap.set(oldId, data.id);
     }
+    taskWeights.set(data.id, asNumber(task.weight, 1));
   }
 
   for (const month of months) {
@@ -1301,20 +1431,38 @@ export async function importJsonAction(formData: FormData) {
       continue;
     }
 
-    const { data, error } = await supabase
+    const type = parseGoalType(asString(goal.type));
+    const { data: matchingGoals, error: matchingGoalsError } = await supabase
       .from("goals")
-      .insert({
-        user_id: userId,
-        title,
-        description: asNullableString(goal.description),
-        type: parseGoalType(asString(goal.type)),
-        status: parseGoalStatus(asString(goal.status)),
-        priority: parseGoalPriority(asString(goal.priority)),
-        start_date: asNullableString(goal.start_date),
-        due_date: asNullableString(goal.due_date)
-      })
       .select("id")
-      .single();
+      .eq("user_id", userId)
+      .eq("title", title)
+      .eq("type", type)
+      .limit(1);
+
+    if (matchingGoalsError) {
+      throw new Error(matchingGoalsError.message);
+    }
+
+    const goalPayload = {
+      title,
+      description: asNullableString(goal.description),
+      type,
+      status: parseGoalStatus(asString(goal.status)),
+      priority: parseGoalPriority(asString(goal.priority)),
+      start_date: asNullableString(goal.start_date),
+      due_date: asNullableString(goal.due_date)
+    };
+    const existingGoal = matchingGoals?.[0] ?? null;
+    const { data, error } = existingGoal
+      ? await supabase
+          .from("goals")
+          .update(goalPayload)
+          .eq("id", existingGoal.id)
+          .eq("user_id", userId)
+          .select("id")
+          .single()
+      : await supabase.from("goals").insert({ user_id: userId, ...goalPayload }).select("id").single();
 
     if (error || !data) {
       throw new Error(error?.message ?? "Цель не импортирована");
@@ -1341,7 +1489,7 @@ export async function importJsonAction(formData: FormData) {
         task_id: taskId,
         date: asString(plan.date),
         planned_value: plannedValue,
-        planned_score: calculateScore(plannedValue, 1),
+        planned_score: calculateScore(plannedValue, taskWeights.get(taskId) ?? 1),
         locked: false
       };
     })
@@ -1372,7 +1520,7 @@ export async function importJsonAction(formData: FormData) {
         task_id: taskId,
         date: asString(fact.date),
         actual_value: actualValue,
-        actual_score: calculateScore(actualValue, 1),
+        actual_score: calculateScore(actualValue, taskWeights.get(taskId) ?? 1),
         note: asNullableString(fact.note)
       };
     })
@@ -1444,22 +1592,42 @@ export async function importJsonAction(formData: FormData) {
     }
   }
 
-  const mappedNotes = notes.map((note) => ({
-    user_id: userId,
-    month_id: monthMap.get(asString(note.month_id)) ?? null,
-    task_id: taskMap.get(asString(note.task_id)) ?? null,
-    goal_id: goalMap.get(asString(note.goal_id)) ?? null,
-    date: asNullableString(note.date),
-    title: asNullableString(note.title),
-    content: asString(note.content),
-    tags: asStringArray(note.tags)
-  })).filter((note) => note.content);
+  const mappedNotes = notes
+    .map((note) => ({
+      user_id: userId,
+      month_id: monthMap.get(asString(note.month_id)) ?? null,
+      task_id: taskMap.get(asString(note.task_id)) ?? null,
+      goal_id: goalMap.get(asString(note.goal_id)) ?? null,
+      date: asNullableString(note.date),
+      title: asNullableString(note.title),
+      content: asString(note.content),
+      tags: asStringArray(note.tags)
+    }))
+    .filter((note) => note.content);
 
-  if (mappedNotes.length > 0) {
-    const { error } = await supabase.from("notes").insert(mappedNotes);
+  for (const note of mappedNotes) {
+    let existingNoteQuery = supabase
+      .from("notes")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("content", note.content)
+      .limit(1);
 
-    if (error) {
-      throw new Error(error.message);
+    existingNoteQuery = note.date ? existingNoteQuery.eq("date", note.date) : existingNoteQuery.is("date", null);
+    existingNoteQuery = note.title ? existingNoteQuery.eq("title", note.title) : existingNoteQuery.is("title", null);
+
+    const { data: existingNotes, error: existingNotesError } = await existingNoteQuery;
+
+    if (existingNotesError) {
+      throw new Error(existingNotesError.message);
+    }
+
+    if (!existingNotes?.length) {
+      const { error } = await supabase.from("notes").insert(note);
+
+      if (error) {
+        throw new Error(error.message);
+      }
     }
   }
 
@@ -1579,12 +1747,16 @@ function parseTags(value?: string) {
     .filter(Boolean);
 }
 
-async function copyGoalLinksForTasks(_taskIds: Set<string>) {
-  return;
-}
-
 function asString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function getSafeNextPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+
+  return value.startsWith("/team/invite/") ? value : null;
 }
 
 function asNullableString(value: unknown) {

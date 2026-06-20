@@ -428,6 +428,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      team_member_preferences: {
+        Row: {
+          team_id: string;
+          user_id: string;
+          share_task_details: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          team_id: string;
+          user_id: string;
+          share_task_details?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          share_task_details?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       team_invites: {
         Row: {
           id: string;
@@ -528,6 +549,13 @@ export type Database = {
       leave_team: {
         Args: { checked_team_id: string };
         Returns: void;
+      };
+      get_team_member_profiles: {
+        Args: { checked_team_id: string };
+        Returns: {
+          id: string;
+          name: string;
+        }[];
       };
     };
     Enums: {

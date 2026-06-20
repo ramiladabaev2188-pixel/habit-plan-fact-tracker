@@ -1,19 +1,7 @@
-const CACHE_NAME = "habit-plan-fact-v4";
+const CACHE_NAME = "habit-plan-fact-v5";
 const OFFLINE_URL = "/offline";
 const CORE_URLS = [
   "/offline",
-  "/dashboard",
-  "/daily",
-  "/calendar",
-  "/planner",
-  "/analytics",
-  "/weekly",
-  "/monthly-report",
-  "/history",
-  "/goals",
-  "/notes",
-  "/checks",
-  "/settings",
   "/manifest.json",
   "/icons/icon.svg",
   "/icons/maskable.svg"
@@ -55,16 +43,17 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
+        .then((response) => response)
         .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || caches.match(OFFLINE_URL);
+          return caches.match(OFFLINE_URL);
         })
     );
+    return;
+  }
+
+  const canCache = ["style", "script", "font", "image"].includes(request.destination);
+
+  if (!canCache) {
     return;
   }
 

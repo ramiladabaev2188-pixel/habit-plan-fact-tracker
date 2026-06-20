@@ -200,11 +200,7 @@ export function copyMonthTemplate({
 }) {
   const tasksWithPlan = new Set(sourcePlans.filter((plan) => Number(plan.planned_score) > 0).map((plan) => plan.task_id));
   const selectedTasks = tasks.filter((task) => {
-    if (options.onlyActive && !task.is_active) {
-      return false;
-    }
-
-    if (!options.copyAllTasks && !task.is_active) {
+    if (!options.copyAllTasks && options.onlyActive && !task.is_active) {
       return false;
     }
 

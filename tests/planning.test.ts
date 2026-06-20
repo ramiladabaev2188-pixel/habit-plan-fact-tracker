@@ -104,4 +104,26 @@ describe("planning", () => {
     expect(copied.tasks).toHaveLength(1);
     expect(copied.rows).toHaveLength(8);
   });
+
+  it("includes inactive tasks when the all-tasks option is selected", () => {
+    const inactiveTask = { ...task, id: "task-2", is_active: false };
+    const copied = copyMonthTemplate({
+      targetMonth: month,
+      sourcePlans: [
+        { task_id: task.id, planned_value: 1, planned_score: 2 },
+        { task_id: inactiveTask.id, planned_value: 1, planned_score: 2 }
+      ],
+      tasks: [task, inactiveTask],
+      rules: [],
+      options: {
+        copyAllTasks: true,
+        onlyActive: true,
+        excludeTasksWithoutPlan: true,
+        keepCategories: true,
+        keepGoalLinks: true
+      }
+    });
+
+    expect(copied.tasks.map((item) => item.id)).toEqual(["task-1", "task-2"]);
+  });
 });

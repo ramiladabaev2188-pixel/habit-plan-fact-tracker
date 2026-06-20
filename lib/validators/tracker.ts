@@ -8,6 +8,20 @@ export const factValueSchema = z
   .max(2, "Значение не может быть больше 2")
   .refine(quarterStep, "Значение должно быть кратно 0.25");
 
+export const dateKeySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Укажите дату в формате ГГГГ-ММ-ДД")
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  }, "Укажите существующую дату");
+
 export const planValueSchema = z
   .number()
   .min(0, "План не может быть отрицательным")
