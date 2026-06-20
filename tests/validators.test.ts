@@ -4,7 +4,9 @@ import {
   factValueSchema,
   planGenerationSchema,
   preferencesSchema,
-  settingsSchema
+  settingsSchema,
+  signInSchema,
+  signUpSchema
 } from "@/lib/validators/tracker";
 
 describe("validators", () => {
@@ -50,5 +52,11 @@ describe("validators", () => {
     expect(dateKeySchema.safeParse("2026-06-30").success).toBe(true);
     expect(dateKeySchema.safeParse("2026-02-29").success).toBe(false);
     expect(dateKeySchema.safeParse("2026-6-1").success).toBe(false);
+  });
+
+  it("requires a stronger password for new accounts without blocking existing sign-ins", () => {
+    expect(signInSchema.safeParse({ email: "ramil@example.com", password: "123456" }).success).toBe(true);
+    expect(signUpSchema.safeParse({ name: "Рамиль", email: "ramil@example.com", password: "12345678901" }).success).toBe(false);
+    expect(signUpSchema.safeParse({ name: "Рамиль", email: "ramil@example.com", password: "long-enough-12" }).success).toBe(true);
   });
 });

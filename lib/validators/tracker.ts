@@ -127,7 +127,25 @@ export const copyMonthTemplateSchema = z.object({
 });
 
 export const importPreviewSchema = z.object({
-  payload: z.string().trim().min(2, "Вставьте JSON")
+  payload: z
+    .string()
+    .trim()
+    .min(2, "Вставьте JSON")
+    .max(2_000_000, "Файл импорта слишком большой. Максимум 2 МБ.")
+});
+
+export const signInSchema = z.object({
+  email: z.string().trim().email("Укажите корректную почту").max(320),
+  password: z.string().min(6, "Пароль слишком короткий").max(128, "Пароль слишком длинный")
+});
+
+export const signUpSchema = z.object({
+  name: z.string().trim().min(1, "Введите имя").max(80),
+  email: z.string().trim().email("Укажите корректную почту").max(320),
+  password: z
+    .string()
+    .min(12, "Для нового аккаунта используйте пароль не короче 12 символов")
+    .max(128, "Пароль слишком длинный")
 });
 
 export const teamSchema = z.object({

@@ -557,6 +557,17 @@ export type Database = {
           name: string;
         }[];
       };
+      consume_rate_limit: {
+        Args: {
+          checked_key: string;
+          max_requests: number;
+          window_seconds: number;
+        };
+        Returns: {
+          allowed: boolean;
+          retry_after: number;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

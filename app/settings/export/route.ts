@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,6 +15,20 @@ export async function GET() {
 
   if (!user) {
     return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
+  }
+
+  const rateLimit = await consumeRateLimit({
+    scope: "data-export",
+    identifier: user.id,
+    maxRequests: 10,
+    windowSeconds: 3600
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Слишком много экспортов. Повторите позже." },
+      { status: 429, headers: { "retry-after": String(rateLimit.retryAfter) } }
+    );
   }
 
   const [profile, preferences, categories, tasks, months, goals, goalTasks, notes, planningRules, dailyNotes] = await Promise.all([
@@ -59,7 +74,8 @@ export async function GET() {
   return new NextResponse(JSON.stringify(payload, null, 2), {
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "content-disposition": `attachment; filename="habit-tracker-export-${new Date().toISOString().slice(0, 10)}.json"`
+      "content-disposition": `attachment; filename="habit-tracker-export-${new Date().toISOString().slice(0, 10)}.json"`,
+      "cache-control": "private, no-store"
     }
   });
 }

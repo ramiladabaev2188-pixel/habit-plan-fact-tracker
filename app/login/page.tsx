@@ -93,7 +93,7 @@ export default async function LoginPage({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Пароль</Label>
-                <Input id="signup-password" name="password" type="password" required minLength={6} />
+                <Input id="signup-password" name="password" type="password" required minLength={12} />
               </div>
               <Button type="submit" variant="secondary" className="w-full">
                 Создать аккаунт

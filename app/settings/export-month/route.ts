@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { entityIdSchema } from "@/lib/validators/tracker";
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -16,16 +18,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
   }
 
-  const monthId = request.nextUrl.searchParams.get("month");
+  const rateLimit = await consumeRateLimit({
+    scope: "data-export",
+    identifier: user.id,
+    maxRequests: 10,
+    windowSeconds: 3600
+  });
 
-  if (!monthId) {
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Слишком много экспортов. Повторите позже." },
+      { status: 429, headers: { "retry-after": String(rateLimit.retryAfter) } }
+    );
+  }
+
+  const monthId = entityIdSchema.safeParse(request.nextUrl.searchParams.get("month"));
+
+  if (!monthId.success) {
     return NextResponse.json({ error: "Укажите месяц" }, { status: 400 });
   }
 
   const { data: month, error: monthError } = await supabase
     .from("months")
     .select("*")
-    .eq("id", monthId)
+    .eq("id", monthId.data)
     .eq("user_id", user.id)
     .single();
 
@@ -65,7 +81,8 @@ export async function GET(request: NextRequest) {
   return new NextResponse(JSON.stringify(payload, null, 2), {
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "content-disposition": `attachment; filename="habit-tracker-${month.year}-${String(month.month).padStart(2, "0")}.json"`
+      "content-disposition": `attachment; filename="habit-tracker-${month.year}-${String(month.month).padStart(2, "0")}.json"`,
+      "cache-control": "private, no-store"
     }
   });
 }

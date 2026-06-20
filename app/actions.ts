@@ -10,6 +10,7 @@ import {
   generatePlanFromRule,
   mergeApprovedPlanRows
 } from "@/lib/planning";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -28,6 +29,8 @@ import {
   planValueSchema,
   preferencesSchema,
   settingsSchema,
+  signInSchema,
+  signUpSchema,
   taskActiveSchema,
   taskSchema,
   taskUpdateSchema,
@@ -75,12 +78,30 @@ type ImportedPayload = {
 };
 
 export async function signInAction(formData: FormData) {
+  const parsedCredentials = signInSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password")
+  });
+
+  if (!parsedCredentials.success) {
+    redirect(`/login?message=${encodeURIComponent(parsedCredentials.error.issues[0]?.message ?? "Проверьте данные для входа")}`);
+  }
+
+  const rateLimit = await consumeRateLimit({
+    scope: "auth-signin",
+    identifier: parsedCredentials.data.email,
+    maxRequests: 5,
+    windowSeconds: 60
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(`/login?message=${encodeURIComponent(getRateLimitMessage(rateLimit.retryAfter))}`);
+  }
+
   const supabase = await createClient();
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
   const next = getSafeNextPath(formData.get("next"));
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword(parsedCredentials.data);
 
   if (error) {
     redirect(`/login?message=${encodeURIComponent(error.message)}`);
@@ -90,19 +111,37 @@ export async function signInAction(formData: FormData) {
 }
 
 export async function signUpAction(formData: FormData) {
+  const parsedCredentials = signUpSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password")
+  });
+
+  if (!parsedCredentials.success) {
+    redirect(`/login?message=${encodeURIComponent(parsedCredentials.error.issues[0]?.message ?? "Проверьте данные регистрации")}`);
+  }
+
+  const rateLimit = await consumeRateLimit({
+    scope: "auth-signup",
+    identifier: parsedCredentials.data.email,
+    maxRequests: 3,
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    redirect(`/login?message=${encodeURIComponent(getRateLimitMessage(rateLimit.retryAfter))}`);
+  }
+
   const supabase = await createClient();
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
-  const name = String(formData.get("name") ?? "");
   const origin = await getRequestOrigin();
   const next = getSafeNextPath(formData.get("next"));
 
   const { error } = await supabase.auth.signUp({
-    email,
-    password,
+    email: parsedCredentials.data.email,
+    password: parsedCredentials.data.password,
     options: {
       emailRedirectTo: `${origin}${next ?? "/dashboard"}`,
-      data: { name }
+      data: { name: parsedCredentials.data.name }
     }
   });
 
@@ -961,6 +1000,17 @@ export async function createTeamInviteAction(formData: FormData) {
     throw new Error(membershipError?.message ?? "Недостаточно прав для приглашения");
   }
 
+  const rateLimit = await consumeRateLimit({
+    scope: "team-invite",
+    identifier: userId,
+    maxRequests: 10,
+    windowSeconds: 3600
+  });
+
+  if (!rateLimit.allowed) {
+    throw new Error(getRateLimitMessage(rateLimit.retryAfter));
+  }
+
   const token = crypto.randomUUID().replaceAll("-", "");
   const { error } = await supabase.from("team_invites").insert({
     team_id: parsed.teamId,
@@ -1231,6 +1281,17 @@ export async function importJsonAction(formData: FormData) {
 
   if (formData.get("confirmImport") !== "on") {
     throw new Error("Подтвердите импорт, чтобы изменить данные.");
+  }
+
+  const rateLimit = await consumeRateLimit({
+    scope: "data-import",
+    identifier: userId,
+    maxRequests: 3,
+    windowSeconds: 3600
+  });
+
+  if (!rateLimit.allowed) {
+    throw new Error(getRateLimitMessage(rateLimit.retryAfter));
   }
 
   let payload: ImportedPayload;
@@ -1757,6 +1818,13 @@ function getSafeNextPath(value: FormDataEntryValue | null) {
   }
 
   return value.startsWith("/team/invite/") ? value : null;
+}
+
+function getRateLimitMessage(retryAfter: number) {
+  const minutes = Math.ceil(retryAfter / 60);
+  return minutes > 1
+    ? `Слишком много попыток. Повторите через ${minutes} мин.`
+    : "Слишком много попыток. Повторите через минуту.";
 }
 
 function asNullableString(value: unknown) {
