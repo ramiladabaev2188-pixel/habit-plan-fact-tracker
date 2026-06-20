@@ -35,8 +35,8 @@ export function MonthComparisonChart({ data }: { data: MonthPoint[] }) {
             tickFormatter={(value) => `${Math.round(Number(value) * 100)}%`}
           />
           <Tooltip formatter={(value) => formatPercent(Number(value))} />
-          <Bar dataKey="completion" name="Выполнение" fill="#187658" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="forecast" name="Прогноз" fill="#6b7f88" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="completion" name="Выполнение" fill="#ff682c" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="forecast" name="Прогноз" fill="#202020" fillOpacity={0.28} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

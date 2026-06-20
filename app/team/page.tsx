@@ -128,7 +128,7 @@ export default async function TeamPage({
       </div>
 
       {inviteLink ? (
-        <div className="signal-panel flex flex-col gap-3 border-primary/25 bg-primary/[0.055] lg:flex-row lg:items-center lg:justify-between">
+        <div className="signal-panel flex flex-col gap-3 border-signal/30 bg-signal/10 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="font-semibold">Ссылка приглашения создана</div>
               <p className="text-sm text-muted-foreground">
@@ -140,16 +140,40 @@ export default async function TeamPage({
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.15fr_1fr_.85fr_.85fr]">
-        <KpiCard title="Командное выполнение" value={formatPercent(stats.completion)} detail={`${formatScore(stats.factScore)} / ${formatScore(stats.planScore)} баллов`} />
-        <KpiCard title="Прогноз" value={formatPercent(stats.forecastPercent)} detail="если сохранять текущий темп" />
-        <KpiCard title="Нужно в день" value={formatScore(stats.requiredPerDay)} detail="суммарно по команде" />
-        <KpiCard title="Участники с планом" value={`${stats.membersWithPlan} / ${stats.activeMembers}`} detail="за выбранный месяц" />
-      </div>
+      <section className="team-scoreboard" aria-label="Общий результат команды">
+        <div className="team-scoreboard-main">
+          <div className="page-kicker">Общий результат</div>
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-5xl font-semibold tracking-tight md:text-6xl">{formatPercent(stats.completion)}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {formatScore(stats.factScore)} из {formatScore(stats.planScore)} баллов команды
+              </div>
+            </div>
+            <Badge variant={stats.completion >= 0.8 ? "success" : stats.completion >= 0.6 ? "warning" : "destructive"}>
+              {stats.completion >= 0.8 ? "Команда в темпе" : "Нужен общий рывок"}
+            </Badge>
+          </div>
+          <Progress className="mt-6" value={Math.min(stats.completion, 1.2) * 100} />
+        </div>
+        <div className="team-scoreboard-side grid gap-4 sm:grid-cols-3 md:grid-cols-1">
+          <div>
+            <div className="text-sm text-muted-foreground">Прогноз</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight">{formatPercent(stats.forecastPercent)}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Нужно в день</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight">{formatScore(stats.requiredPerDay)}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Участники с планом</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight">{stats.membersWithPlan} / {stats.activeMembers}</div>
+          </div>
+        </div>
+      </section>
 
       {stats.focusMember ? (
-        <Card className="focus-panel">
-          <CardContent className="flex gap-3 p-4">
+        <section className="signal-panel flex gap-3 border-warning/35 bg-warning/10">
             <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-warning" />
             <div>
               <div className="font-semibold">Главный командный фокус</div>
@@ -157,8 +181,7 @@ export default async function TeamPage({
                 Сейчас больше всего нужно подтянуть участника: {stats.focusMember.name}, {formatScore(stats.focusMember.requiredPerDay)} балла/день.
               </p>
             </div>
-          </CardContent>
-        </Card>
+        </section>
       ) : null}
 
       <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
@@ -306,18 +329,6 @@ function CreateTeamCard() {
           </div>
           <Button type="submit">Создать команду</Button>
         </form>
-      </CardContent>
-    </Card>
-  );
-}
-
-function KpiCard({ title, value, detail }: { title: string; value: string; detail: string }) {
-  return (
-    <Card className="metric-card">
-      <CardContent className="relative p-0">
-        <div className="text-sm font-medium text-muted-foreground">{title}</div>
-        <div className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">{value}</div>
-        <div className="mt-2 text-sm leading-5 text-muted-foreground">{detail}</div>
       </CardContent>
     </Card>
   );

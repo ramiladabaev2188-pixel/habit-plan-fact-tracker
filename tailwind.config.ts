@@ -66,6 +66,11 @@ const config: Config = {
         over: {
           DEFAULT: "hsl(var(--over))",
           foreground: "hsl(var(--over-foreground))"
+        },
+        fog: "hsl(var(--muted))",
+        signal: {
+          DEFAULT: "hsl(var(--signal))",
+          foreground: "hsl(var(--primary-foreground))"
         }
       },
       borderRadius: {

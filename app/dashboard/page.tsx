@@ -96,9 +96,8 @@ export default async function DashboardPage({
       />
       <div className="workspace-header">
         <div>
-          <div className="page-kicker">Рабочее пространство</div>
-          <h1 className="workspace-title mt-1">Дашборд</h1>
-          <p className="workspace-subtitle">{selectedMonth.title}. Сначала закройте главный риск, затем держите общий темп.</p>
+          <h1 className="workspace-title">Дашборд</h1>
+          <p className="workspace-subtitle">{selectedMonth.title}. Картина месяца, темп и то, что важнее всего закрыть сегодня.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant={badgeVariantByLevel[completionStatus.level]}>
@@ -110,84 +109,108 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.15fr_1.15fr_.85fr_.85fr]">
-        <KpiCard
-          icon={<Target className="h-5 w-5" />}
-          label="Выполнение месяца"
-          value={formatPercent(monthStats.monthCompletion)}
-          detail={`${formatScore(monthStats.totalFactScore)} / ${formatScore(monthStats.totalPlanScore)} баллов`}
-          progress={monthStats.monthCompletion}
-          tone={completionStatus.level}
-        />
-        <KpiCard
-          icon={<TrendingUp className="h-5 w-5" />}
-          label="Прогноз"
-          value={formatPercent(monthStats.forecastPercent)}
-          detail={`${formatScore(monthStats.forecastScore)} баллов к концу месяца`}
-          progress={monthStats.forecastPercent}
-          tone={forecastStatus.level}
-        />
-        <KpiCard
+      <section className="dashboard-hero-grid" aria-labelledby="focus-heading">
+        <div className="dashboard-focus-stage">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="dashboard-focus-label">Главный фокус</div>
+              <h2 id="focus-heading" className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">
+                {focus?.title ?? "План месяца идет ровно"}
+              </h2>
+            </div>
+            <AlertTriangle className="h-6 w-6 shrink-0 text-signal" strokeWidth={1.7} />
+          </div>
+          {focus ? (
+            <>
+              <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
+                Задача с самым большим влиянием на результат месяца. Закройте ее прежде, чем расходовать внимание на мелочи.
+              </p>
+              <div className="mt-7 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Отставание</div>
+                  <div className="data-value mt-1 text-3xl">{formatScore(focus.gapScore)} балла</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Минимум в день</div>
+                  <div className="data-value mt-1 text-3xl">{formatScore(focus.requiredPerDay)} балла</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Сегодня нет задач с критическим отставанием. Сохраняйте текущий темп.</p>
+          )}
+        </div>
+
+        <aside className="dashboard-readout" aria-label="Ключевые показатели месяца">
+          <div className="dashboard-readout-cell border-b border-border/80">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-muted-foreground">Выполнение месяца</span>
+              <Target className="h-5 w-5 text-signal" strokeWidth={1.8} />
+            </div>
+            <div className="data-value mt-5 text-5xl">{formatPercent(monthStats.monthCompletion)}</div>
+            <div className="mt-3 text-sm text-muted-foreground">{formatScore(monthStats.totalFactScore)} из {formatScore(monthStats.totalPlanScore)} баллов</div>
+          </div>
+          <div className="dashboard-readout-cell">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-muted-foreground">Прогноз к концу месяца</span>
+              <TrendingUp className="h-5 w-5 text-signal" strokeWidth={1.8} />
+            </div>
+            <div className="data-value mt-5 text-4xl">{formatPercent(monthStats.forecastPercent)}</div>
+            <Progress className="mt-4" value={Math.min(monthStats.forecastPercent, 1.2) * 100} />
+          </div>
+        </aside>
+      </section>
+
+      <section className="dashboard-metric-rail" aria-label="Дополнительные показатели">
+        <MetricCell
           icon={<Activity className="h-5 w-5" />}
           label="Нужно в день"
           value={formatScore(monthStats.requiredPerDay)}
-          detail={`Осталось дней с планом: ${monthStats.remainingDays}`}
-          progress={monthStats.requiredPerDay / Math.max(1, monthStats.totalPlanScore / Math.max(1, monthStats.totalPlannedDays))}
-          tone="info"
+          detail={`Осталось плановых дней: ${monthStats.remainingDays}`}
         />
-        <KpiCard
+        <MetricCell
           icon={<CalendarCheck className="h-5 w-5" />}
           label="Дней с планом"
           value={`${monthStats.elapsedDaysWithPlan} / ${monthStats.totalPlannedDays}`}
           detail="Прошло / всего"
-          progress={monthStats.elapsedDaysWithPlan / Math.max(1, monthStats.totalPlannedDays)}
-          tone="info"
         />
-      </div>
-
-      <Card className="focus-panel">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-warning" />
-            Главный фокус дня
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {focus ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-lg font-semibold">{focus.title}</div>
-                <div className="text-sm text-muted-foreground">
-                  Отставание {formatScore(focus.gapScore)} баллов, нужно {formatScore(focus.requiredPerDay)} в день
-                </div>
-              </div>
-              <Badge variant={focus.completion >= 0.8 ? "success" : "warning"}>
-                {formatPercent(focus.completion)}
-              </Badge>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Нет задач с отставанием.</p>
-          )}
-        </CardContent>
-      </Card>
+        <MetricCell
+          icon={<Target className="h-5 w-5" />}
+          label="Факт баллов"
+          value={formatScore(monthStats.totalFactScore)}
+          detail={`из ${formatScore(monthStats.totalPlanScore)} плана`}
+        />
+        <MetricCell
+          icon={<TrendingUp className="h-5 w-5" />}
+          label="Статус темпа"
+          value={forecastStatus.level === "danger" ? "Риск" : forecastStatus.level === "warning" ? "Ускориться" : "В норме"}
+          detail={forecastStatus.label}
+        />
+      </section>
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <Card className="section-panel">
-          <CardHeader>
-            <CardTitle>План vs факт по дням</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="dashboard-chart-panel">
+          <div className="dashboard-panel-header">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">План и факт по дням</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Ритм выполнения без накопления.</p>
+            </div>
+          </div>
+          <div className="p-5">
             <DashboardPlanFactChart data={chartData} />
-          </CardContent>
-        </Card>
-        <Card className="section-panel">
-          <CardHeader>
-            <CardTitle>Накопительный план vs факт</CardTitle>
-          </CardHeader>
-          <CardContent>
+          </div>
+        </section>
+        <section className="dashboard-chart-panel">
+          <div className="dashboard-panel-header">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Накопительный темп</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Разрыв между планом и фактом за месяц.</p>
+            </div>
+          </div>
+          <div className="p-5">
             <DashboardCumulativePlanFactChart data={chartData} />
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
 
       <Card className="section-panel">
@@ -212,7 +235,7 @@ export default async function DashboardPage({
                   />
                   <span className="truncate">{category?.name ?? "Без категории"}</span>
                 </div>
-                <div className="text-lg font-semibold">{formatPercent(categoryStat.completion)}</div>
+                <div className="data-value text-2xl">{formatPercent(categoryStat.completion)}</div>
               </div>
               <div className="mt-4 space-y-2">
                 <Progress
@@ -258,62 +281,25 @@ function shiftDateKey(dateKey: string, days: number) {
   return toDateKey(new Date(year, month - 1, day + days));
 }
 
-function KpiCard({
+function MetricCell({
   icon,
   label,
   value,
-  detail,
-  progress,
-  tone
+  detail
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   detail: string;
-  progress: number;
-  tone: "over" | "success" | "warning" | "danger" | "info";
 }) {
   return (
-    <Card className="metric-card">
-      <CardContent className="relative space-y-4 p-0">
-        <div
-          className={cn(
-            "absolute inset-x-0 top-0 h-1",
-            tone === "over" && "bg-over",
-            tone === "success" && "bg-success",
-            tone === "warning" && "bg-warning",
-            tone === "danger" && "bg-destructive",
-            tone === "info" && "bg-info"
-          )}
-        />
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-muted-foreground">{label}</div>
-          <div
-            className={cn(
-              "rounded-md p-2",
-              tone === "over" && "bg-over/10 text-over",
-              tone === "success" && "bg-success/10 text-success",
-              tone === "warning" && "bg-warning/15 text-warning",
-              tone === "danger" && "bg-destructive/10 text-destructive",
-              tone === "info" && "bg-info/10 text-info"
-            )}
-          >
-            {icon}
-          </div>
-        </div>
-        <div className="text-3xl font-semibold tracking-tight md:text-4xl">{value}</div>
-        <Progress
-          value={Math.min(progress, 1.2) * 100}
-          indicatorClassName={cn(
-            tone === "over" && "bg-over",
-            tone === "success" && "bg-success",
-            tone === "warning" && "bg-warning",
-            tone === "danger" && "bg-destructive",
-            tone === "info" && "bg-info"
-          )}
-        />
-        <div className="text-sm text-muted-foreground">{detail}</div>
-      </CardContent>
-    </Card>
+    <div className="dashboard-metric-cell">
+      <div className="flex items-center justify-between gap-3 text-muted-foreground">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-signal">{icon}</span>
+      </div>
+      <div className="data-value mt-5 text-3xl">{value}</div>
+      <div className="mt-2 text-sm leading-5 text-muted-foreground">{detail}</div>
+    </div>
   );
 }

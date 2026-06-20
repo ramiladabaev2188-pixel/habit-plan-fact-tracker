@@ -58,7 +58,14 @@ export function PlannerWorkspace({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 xl:grid-cols-[0.95fr_1fr_1.2fr]">
+      <div className="flex flex-col gap-2 border-b border-border/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="page-kicker">Первый шаг</div>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Соберите основу месяца</h2>
+        </div>
+        <p className="max-w-md text-sm leading-5 text-muted-foreground">Месяц, категории и задачи остаются рядом, чтобы план не распадался на отдельные действия.</p>
+      </div>
+      <div className="planner-top-grid grid gap-3 xl:grid-cols-[0.8fr_1fr_1.25fr]">
         <Card className="section-panel">
           <CardHeader>
             <CardTitle>Месяц</CardTitle>
@@ -332,8 +339,8 @@ export function PlannerWorkspace({
         </Card>
       </div>
 
-      <Card className="section-panel">
-        <CardHeader>
+      <Card className="planner-workflow-panel">
+        <CardHeader className="planner-workflow-heading">
           <CardTitle>Новый месяц из шаблона</CardTitle>
           <CardDescription>Копирует правила планирования прошлого месяца и генерирует план заново</CardDescription>
         </CardHeader>
@@ -392,8 +399,8 @@ export function PlannerWorkspace({
       </Card>
 
       {selectedMonth ? (
-        <Card className="section-panel">
-          <CardHeader>
+        <Card className="planner-workflow-panel">
+          <CardHeader className="planner-workflow-heading">
             <CardTitle>Генератор плана</CardTitle>
             <CardDescription>После утверждения можно только увеличить план или добавить новое</CardDescription>
           </CardHeader>
@@ -458,8 +465,8 @@ export function PlannerWorkspace({
       ) : null}
 
       {selectedMonth ? (
-        <Card className="section-panel">
-          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <Card className="planner-workflow-panel">
+          <CardHeader className="planner-workflow-heading flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle>Календарная таблица</CardTitle>
               <CardDescription>

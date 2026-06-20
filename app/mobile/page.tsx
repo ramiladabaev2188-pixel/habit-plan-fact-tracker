@@ -111,19 +111,19 @@ export default async function MobilePage({
         <div className="p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <Badge variant="secondary" className="mb-3 bg-primary-foreground/15 text-primary-foreground">
+              <Badge variant="secondary" className="mb-3 bg-fog text-muted-foreground">
                 <Smartphone className="mr-1 h-3.5 w-3.5" />
                 Телефон
               </Badge>
-              <h1 className="text-3xl font-semibold tracking-tight">Сегодня</h1>
-              <p className="text-sm text-primary-foreground/80">{selectedDate}</p>
+              <h1 className="text-3xl font-normal tracking-tight">Сегодня</h1>
+              <p className="text-sm text-muted-foreground">{selectedDate}</p>
             </div>
-            <div className="rounded-md bg-primary-foreground/15 p-3">
-              <ListChecks className="h-7 w-7" />
+            <div className="rounded-lg bg-fog p-3 text-signal">
+              <ListChecks className="h-7 w-7" strokeWidth={1.7} />
             </div>
           </div>
         </div>
-        <div className="space-y-4 border-t border-primary-foreground/15 bg-card p-4 text-card-foreground">
+        <div className="space-y-4 border-t border-border bg-card p-4 text-card-foreground">
           <form className="grid grid-cols-[1fr_auto] gap-2" action="/mobile">
             <input type="hidden" name="month" value={selectedMonth.id} />
             <div className="space-y-2">
@@ -170,21 +170,21 @@ export default async function MobilePage({
         </Button>
       </div>
 
-      <Card className="section-panel">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Месяц</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <section className="dashboard-readout" aria-label="Итог месяца">
+        <div className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-muted-foreground">Итог месяца</div>
+            <Badge variant={monthStatus.level === "danger" ? "destructive" : monthStatus.level}>
+              {monthStatus.label}
+            </Badge>
+          </div>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-2xl font-semibold">{formatPercent(monthStats.monthCompletion)}</div>
+              <div className="data-value mt-4 text-4xl">{formatPercent(monthStats.monthCompletion)}</div>
               <div className="text-sm text-muted-foreground">
                 {formatScore(monthStats.currentFactScore)} / {formatScore(monthStats.totalPlanScore)} баллов
               </div>
             </div>
-            <Badge variant={monthStatus.level === "danger" ? "destructive" : monthStatus.level}>
-              {monthStatus.label}
-            </Badge>
           </div>
           <Progress
             value={Math.min(monthStats.monthCompletion, 1.2) * 100}
@@ -195,18 +195,18 @@ export default async function MobilePage({
               monthStatus.level === "danger" && "bg-destructive"
             )}
           />
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="list-row">
+          <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-md bg-muted/55 p-3">
               <div className="text-muted-foreground">Прогноз</div>
               <div className="font-semibold">{formatPercent(monthStats.forecastPercent)}</div>
             </div>
-            <div className="list-row">
+            <div className="rounded-md bg-muted/55 p-3">
               <div className="text-muted-foreground">Нужно в день</div>
               <div className="font-semibold">{formatScore(monthStats.requiredPerDay)}</div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {focusTask ? (
         <Card className="focus-panel">

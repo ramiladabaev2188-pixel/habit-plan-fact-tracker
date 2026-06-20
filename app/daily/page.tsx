@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { closeMonthAction } from "@/app/actions";
 import { DailyInput } from "@/components/daily/daily-input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -105,26 +104,23 @@ export default async function DailyPage({
         </form>
       </div>
 
-      <Card className="section-panel">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
-          <CardTitle>Итог дня</CardTitle>
-          <span className="text-sm text-muted-foreground">Факт относительно плана</span>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="list-row">
-            <div className="text-sm text-muted-foreground">Выполнение</div>
-            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatPercent(dayStats.completion)}</div>
-          </div>
-          <div className="list-row">
-            <div className="text-sm text-muted-foreground">Факт</div>
-            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatScore(dayStats.factScore)}</div>
-          </div>
-          <div className="list-row">
-            <div className="text-sm text-muted-foreground">План</div>
-            <div className="mt-1 text-3xl font-semibold tracking-tight">{formatScore(dayStats.planScore)}</div>
-          </div>
-        </CardContent>
-      </Card>
+      <section className="daily-score-rail" aria-label="Итог дня">
+        <div className="daily-score-cell">
+          <div className="text-sm text-muted-foreground">Выполнение</div>
+          <div className="data-value mt-2 text-4xl">{formatPercent(dayStats.completion)}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Факт относительно плана</div>
+        </div>
+        <div className="daily-score-cell">
+          <div className="text-sm text-muted-foreground">Факт</div>
+          <div className="data-value mt-2 text-4xl">{formatScore(dayStats.factScore)}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Баллов за выбранный день</div>
+        </div>
+        <div className="daily-score-cell">
+          <div className="text-sm text-muted-foreground">План</div>
+          <div className="data-value mt-2 text-4xl">{formatScore(dayStats.planScore)}</div>
+          <div className="mt-2 text-sm text-muted-foreground">Баллов запланировано</div>
+        </div>
+      </section>
 
       <div className="grid gap-3 lg:grid-cols-3">
         {hasUnfilledYesterday ? (
@@ -149,7 +145,7 @@ export default async function DailyPage({
         ) : null}
 
         {focusTask && focusTask.requiredPerDay > 0 ? (
-          <div className="signal-panel border-primary/25 bg-primary/[0.055]">
+          <div className="signal-panel border-signal/30 bg-signal/10">
               <div className="font-semibold">Главный фокус</div>
               <p className="text-sm text-muted-foreground">
                 {focusTask.title}: {formatScore(focusTask.requiredPerDay)} балла в день.
