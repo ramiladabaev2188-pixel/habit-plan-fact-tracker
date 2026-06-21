@@ -235,6 +235,52 @@ export type TeamChallengeCheckin = {
   created_at: string;
 };
 
+export type TeamBoardPriority = "low" | "medium" | "high" | "urgent";
+
+export type TeamBoard = {
+  id: string;
+  team_id: string;
+  created_by: string;
+  title: string;
+  description: string | null;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TeamBoardColumn = {
+  id: string;
+  board_id: string;
+  title: string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type TeamBoardTask = {
+  id: string;
+  board_id: string;
+  column_id: string;
+  created_by: string;
+  assignee_id: string | null;
+  title: string;
+  description: string | null;
+  priority: TeamBoardPriority;
+  due_date: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TeamBoardComment = {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TrackerData = {
   profile: Profile | null;
   categories: Category[];

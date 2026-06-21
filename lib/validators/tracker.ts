@@ -188,3 +188,34 @@ export const teamContributionSchema = z.object({
   note: z.string().trim().max(500).optional(),
   date: z.string().trim().optional()
 });
+
+export const teamBoardSchema = z.object({
+  teamId: z.string().uuid(),
+  title: z.string().trim().min(2, "Название доски слишком короткое").max(100),
+  description: z.string().trim().max(500).optional()
+});
+
+export const teamBoardTaskSchema = z.object({
+  teamId: z.string().uuid(),
+  boardId: z.string().uuid(),
+  columnId: z.string().uuid(),
+  title: z.string().trim().min(2, "Название задачи слишком короткое").max(160),
+  description: z.string().trim().max(2_000).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+  assigneeId: z.string().uuid().or(z.literal("")).optional(),
+  dueDate: z.string().trim().optional()
+});
+
+export const teamBoardTaskMoveSchema = z.object({
+  teamId: z.string().uuid(),
+  boardId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  columnId: z.string().uuid()
+});
+
+export const teamBoardCommentSchema = z.object({
+  teamId: z.string().uuid(),
+  boardId: z.string().uuid(),
+  taskId: z.string().uuid(),
+  content: z.string().trim().min(1, "Введите комментарий").max(1_000)
+});

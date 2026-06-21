@@ -6,7 +6,8 @@ import {
   preferencesSchema,
   settingsSchema,
   signInSchema,
-  signUpSchema
+  signUpSchema,
+  teamBoardTaskSchema
 } from "@/lib/validators/tracker";
 
 describe("validators", () => {
@@ -58,5 +59,21 @@ describe("validators", () => {
     expect(signInSchema.safeParse({ email: "ramil@example.com", password: "123456" }).success).toBe(true);
     expect(signUpSchema.safeParse({ name: "Рамиль", email: "ramil@example.com", password: "12345678901" }).success).toBe(false);
     expect(signUpSchema.safeParse({ name: "Рамиль", email: "ramil@example.com", password: "long-enough-12" }).success).toBe(true);
+  });
+
+  it("validates a team board task before it reaches the database", () => {
+    const baseTask = {
+      teamId: "00000000-0000-0000-0000-000000000001",
+      boardId: "00000000-0000-0000-0000-000000000002",
+      columnId: "00000000-0000-0000-0000-000000000003",
+      title: "Подготовить общий созвон",
+      priority: "high",
+      assigneeId: "",
+      dueDate: "2026-06-30"
+    };
+
+    expect(teamBoardTaskSchema.safeParse(baseTask).success).toBe(true);
+    expect(teamBoardTaskSchema.safeParse({ ...baseTask, priority: "critical" }).success).toBe(false);
+    expect(teamBoardTaskSchema.safeParse({ ...baseTask, title: " " }).success).toBe(false);
   });
 });

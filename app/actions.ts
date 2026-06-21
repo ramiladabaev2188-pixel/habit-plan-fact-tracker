@@ -40,7 +40,11 @@ import {
   leaveTeamSchema,
   teamChallengeSchema,
   teamContributionSchema,
-  teamGoalSchema
+  teamGoalSchema,
+  teamBoardCommentSchema,
+  teamBoardSchema,
+  teamBoardTaskMoveSchema,
+  teamBoardTaskSchema
 } from "@/lib/validators/tracker";
 import type { PlanningRuleMode } from "@/types/domain";
 
@@ -1276,6 +1280,186 @@ export async function addTeamChallengeCheckinAction(formData: FormData) {
   revalidatePath("/team");
 }
 
+const defaultTeamBoardColumns = [
+  { title: "Идеи", color: "#64748b" },
+  { title: "В работе", color: "#3478d4" },
+  { title: "Ждёт", color: "#d9822b" },
+  { title: "Готово", color: "#21835f" }
+];
+
+export async function createTeamBoardAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamBoardSchema.parse({
+    teamId: formData.get("teamId"),
+    title: formData.get("title"),
+    description: formData.get("description")
+  });
+
+  await requireTeamAdmin(supabase, userId, parsed.teamId);
+
+  const { data: board, error: boardError } = await supabase
+    .from("team_boards")
+    .insert({
+      team_id: parsed.teamId,
+      created_by: userId,
+      title: parsed.title,
+      description: parsed.description || null
+    })
+    .select("id")
+    .single();
+
+  if (boardError || !board) {
+    throw new Error(boardError?.message ?? "Не удалось создать доску");
+  }
+
+  const { error: columnsError } = await supabase.from("team_board_columns").insert(
+    defaultTeamBoardColumns.map((column, index) => ({
+      board_id: board.id,
+      title: column.title,
+      color: column.color,
+      sort_order: index
+    }))
+  );
+
+  if (columnsError) {
+    throw new Error(columnsError.message);
+  }
+
+  revalidatePath("/team");
+  revalidatePath("/team/board");
+  redirect(`/team/board?team=${parsed.teamId}&board=${board.id}`);
+}
+
+export async function createTeamBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamBoardTaskSchema.parse({
+    teamId: formData.get("teamId"),
+    boardId: formData.get("boardId"),
+    columnId: formData.get("columnId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    priority: formData.get("priority") || "medium",
+    assigneeId: formData.get("assigneeId"),
+    dueDate: formData.get("dueDate")
+  });
+
+  await requireTeamBoardMember(supabase, userId, parsed.teamId, parsed.boardId);
+
+  const { data: column, error: columnError } = await supabase
+    .from("team_board_columns")
+    .select("id")
+    .eq("id", parsed.columnId)
+    .eq("board_id", parsed.boardId)
+    .maybeSingle();
+
+  if (columnError || !column) {
+    throw new Error(columnError?.message ?? "Колонка не найдена на этой доске.");
+  }
+
+  const assigneeId = parsed.assigneeId || null;
+  if (assigneeId) {
+    const { data: assignee, error: assigneeError } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", parsed.teamId)
+      .eq("user_id", assigneeId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (assigneeError || !assignee) {
+      throw new Error(assigneeError?.message ?? "Исполнителя нет в этой команде.");
+    }
+  }
+
+  const { error } = await supabase.from("team_board_tasks").insert({
+    board_id: parsed.boardId,
+    column_id: parsed.columnId,
+    created_by: userId,
+    assignee_id: assigneeId,
+    title: parsed.title,
+    description: parsed.description || null,
+    priority: parsed.priority,
+    due_date: parsed.dueDate ? dateKeySchema.parse(parsed.dueDate) : null,
+    sort_order: Date.now()
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team/board");
+}
+
+export async function moveTeamBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamBoardTaskMoveSchema.parse({
+    teamId: formData.get("teamId"),
+    boardId: formData.get("boardId"),
+    taskId: formData.get("taskId"),
+    columnId: formData.get("columnId")
+  });
+
+  await requireTeamBoardMember(supabase, userId, parsed.teamId, parsed.boardId);
+
+  const { data: column, error: columnError } = await supabase
+    .from("team_board_columns")
+    .select("id")
+    .eq("id", parsed.columnId)
+    .eq("board_id", parsed.boardId)
+    .maybeSingle();
+
+  if (columnError || !column) {
+    throw new Error(columnError?.message ?? "Колонка не найдена на этой доске.");
+  }
+
+  const { error } = await supabase
+    .from("team_board_tasks")
+    .update({ column_id: parsed.columnId, sort_order: Date.now() })
+    .eq("id", parsed.taskId)
+    .eq("board_id", parsed.boardId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team/board");
+}
+
+export async function addTeamBoardCommentAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamBoardCommentSchema.parse({
+    teamId: formData.get("teamId"),
+    boardId: formData.get("boardId"),
+    taskId: formData.get("taskId"),
+    content: formData.get("content")
+  });
+
+  await requireTeamBoardMember(supabase, userId, parsed.teamId, parsed.boardId);
+
+  const { data: task, error: taskError } = await supabase
+    .from("team_board_tasks")
+    .select("id")
+    .eq("id", parsed.taskId)
+    .eq("board_id", parsed.boardId)
+    .maybeSingle();
+
+  if (taskError || !task) {
+    throw new Error(taskError?.message ?? "Задача не найдена на этой доске.");
+  }
+
+  const { error } = await supabase.from("team_board_comments").insert({
+    task_id: task.id,
+    author_id: userId,
+    content: parsed.content
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team/board");
+}
+
 async function requireTeamAdmin(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -1292,6 +1476,44 @@ async function requireTeamAdmin(
   if (error || !membership || !["owner", "admin"].includes(membership.role)) {
     throw new Error(error?.message ?? "Недостаточно прав для управления командными инициативами.");
   }
+}
+
+async function requireTeamBoardMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  teamId: string,
+  boardId: string
+) {
+  const [{ data: board, error: boardError }, membership] = await Promise.all([
+    supabase.from("team_boards").select("id").eq("id", boardId).eq("team_id", teamId).maybeSingle(),
+    requireTeamMember(supabase, userId, teamId)
+  ]);
+
+  if (boardError || !board) {
+    throw new Error(boardError?.message ?? "Доска не найдена в этой команде.");
+  }
+
+  return membership;
+}
+
+async function requireTeamMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  teamId: string
+) {
+  const { data: membership, error } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !membership) {
+    throw new Error(error?.message ?? "Вы не состоите в этой команде.");
+  }
+
+  return membership;
 }
 
 function getLeaveTeamErrorMessage(message?: string) {

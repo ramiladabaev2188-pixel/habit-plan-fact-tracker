@@ -6,6 +6,10 @@ import type {
   Month,
   Task,
   Team,
+  TeamBoard,
+  TeamBoardColumn,
+  TeamBoardComment,
+  TeamBoardTask,
   TeamChallenge,
   TeamChallengeCheckin,
   TeamGoal,
@@ -63,6 +67,23 @@ export type TeamDashboardResult =
       data: TeamDashboardData | null;
       error: string | null;
     };
+
+export type TeamBoardData = {
+  user: User;
+  teams: Team[];
+  selectedTeam: Team | null;
+  members: TeamMember[];
+  profiles: TeamMemberProfile[];
+  boards: TeamBoard[];
+  selectedBoard: TeamBoard | null;
+  columns: TeamBoardColumn[];
+  tasks: TeamBoardTask[];
+  comments: TeamBoardComment[];
+};
+
+export type TeamBoardResult =
+  | { configured: false; user: null; data: null; error: null }
+  | { configured: true; user: User | null; data: TeamBoardData | null; error: string | null };
 
 export async function loadTeamDashboardData({
   teamId,
@@ -288,6 +309,158 @@ export async function loadTeamDashboardData({
   };
 }
 
+export async function loadTeamBoardData({
+  teamId,
+  boardId
+}: {
+  teamId?: string;
+  boardId?: string;
+}): Promise<TeamBoardResult> {
+  noStore();
+
+  if (!isSupabaseConfigured()) {
+    return { configured: false, user: null, data: null, error: null };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    return { configured: true, user: null, data: null, error: userError.message };
+  }
+  if (!user) {
+    return { configured: true, user: null, data: null, error: null };
+  }
+
+  const { data: memberships, error: membershipsError } = await supabase
+    .from("team_members")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
+  if (membershipsError) {
+    return { configured: true, user, data: null, error: membershipsError.message };
+  }
+
+  const teamIds = Array.from(new Set((memberships ?? []).map((membership) => membership.team_id)));
+  const { data: teamsData, error: teamsError } = teamIds.length
+    ? await supabase.from("teams").select("*").in("id", teamIds).order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (teamsError) {
+    return { configured: true, user, data: null, error: teamsError.message };
+  }
+
+  const teams = (teamsData ?? []) as Team[];
+  const selectedTeam = teams.find((team) => team.id === teamId) ?? teams[0] ?? null;
+
+  if (!selectedTeam) {
+    return {
+      configured: true,
+      user,
+      data: {
+        user,
+        teams,
+        selectedTeam: null,
+        members: [],
+        profiles: [],
+        boards: [],
+        selectedBoard: null,
+        columns: [],
+        tasks: [],
+        comments: []
+      },
+      error: null
+    };
+  }
+
+  const [membersResult, profilesResult, boardsResult] = await Promise.all([
+    supabase
+      .from("team_members")
+      .select("*")
+      .eq("team_id", selectedTeam.id)
+      .eq("status", "active")
+      .order("created_at"),
+    supabase.rpc("get_team_member_profiles", { checked_team_id: selectedTeam.id }),
+    supabase
+      .from("team_boards")
+      .select("*")
+      .eq("team_id", selectedTeam.id)
+      .eq("is_archived", false)
+      .order("created_at", { ascending: false })
+  ]);
+
+  const baseError = membersResult.error?.message ?? profilesResult.error?.message ?? boardsResult.error?.message ?? null;
+  if (baseError) {
+    return { configured: true, user, data: null, error: baseError };
+  }
+
+  const boards = (boardsResult.data ?? []) as TeamBoard[];
+  const selectedBoard = boards.find((board) => board.id === boardId) ?? boards[0] ?? null;
+
+  if (!selectedBoard) {
+    return {
+      configured: true,
+      user,
+      data: {
+        user,
+        teams,
+        selectedTeam,
+        members: (membersResult.data ?? []) as TeamMember[],
+        profiles: (profilesResult.data ?? []) as TeamMemberProfile[],
+        boards,
+        selectedBoard: null,
+        columns: [],
+        tasks: [],
+        comments: []
+      },
+      error: null
+    };
+  }
+
+  const [columnsResult, tasksResult] = await Promise.all([
+    supabase.from("team_board_columns").select("*").eq("board_id", selectedBoard.id).order("sort_order"),
+    supabase.from("team_board_tasks").select("*").eq("board_id", selectedBoard.id).order("sort_order")
+  ]);
+
+  const boardError = columnsResult.error?.message ?? tasksResult.error?.message ?? null;
+  if (boardError) {
+    return { configured: true, user, data: null, error: boardError };
+  }
+
+  const tasks = (tasksResult.data ?? []).map(normalizeTeamBoardTask);
+  const taskIds = tasks.map((task) => task.id);
+  const { data: commentsData, error: commentsError } = taskIds.length
+    ? await supabase.from("team_board_comments").select("*").in("task_id", taskIds).order("created_at")
+    : { data: [], error: null };
+
+  if (commentsError) {
+    return { configured: true, user, data: null, error: commentsError.message };
+  }
+
+  return {
+    configured: true,
+    user,
+    data: {
+      user,
+      teams,
+      selectedTeam,
+      members: (membersResult.data ?? []) as TeamMember[],
+      profiles: (profilesResult.data ?? []) as TeamMemberProfile[],
+      boards,
+      selectedBoard,
+      columns: (columnsResult.data ?? []).map(normalizeTeamBoardColumn),
+      tasks,
+      comments: (commentsData ?? []) as TeamBoardComment[]
+    },
+    error: null
+  };
+}
+
 function normalizeTeamGoal(row: TeamGoal): TeamGoal {
   return { ...row, target_value: Number(row.target_value) };
 }
@@ -302,4 +475,12 @@ function normalizeTeamChallenge(row: TeamChallenge): TeamChallenge {
 
 function normalizeTeamChallengeCheckin(row: TeamChallengeCheckin): TeamChallengeCheckin {
   return { ...row, value: Number(row.value) };
+}
+
+function normalizeTeamBoardColumn(row: TeamBoardColumn): TeamBoardColumn {
+  return { ...row, sort_order: Number(row.sort_order) };
+}
+
+function normalizeTeamBoardTask(row: TeamBoardTask): TeamBoardTask {
+  return { ...row, sort_order: Number(row.sort_order) };
 }

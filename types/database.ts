@@ -609,6 +609,123 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      team_boards: {
+        Row: {
+          id: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description: string | null;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description?: string | null;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          is_archived?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_board_columns: {
+        Row: {
+          id: string;
+          board_id: string;
+          title: string;
+          color: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          board_id: string;
+          title: string;
+          color?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          title?: string;
+          color?: string;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      team_board_tasks: {
+        Row: {
+          id: string;
+          board_id: string;
+          column_id: string;
+          created_by: string;
+          assignee_id: string | null;
+          title: string;
+          description: string | null;
+          priority: "low" | "medium" | "high" | "urgent";
+          due_date: string | null;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          board_id: string;
+          column_id: string;
+          created_by: string;
+          assignee_id?: string | null;
+          title: string;
+          description?: string | null;
+          priority?: "low" | "medium" | "high" | "urgent";
+          due_date?: string | null;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          column_id?: string;
+          assignee_id?: string | null;
+          title?: string;
+          description?: string | null;
+          priority?: "low" | "medium" | "high" | "urgent";
+          due_date?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_board_comments: {
+        Row: {
+          id: string;
+          task_id: string;
+          author_id: string;
+          content: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          task_id: string;
+          author_id: string;
+          content: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          content?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       change_logs: {
         Row: {
           id: string;

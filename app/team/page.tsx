@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -145,7 +146,12 @@ export default async function TeamPage({
             {members.length} {pluralizeMembers(members.length)} · общий ритм, инициативы и вклад каждого без доступа к чужому редактированию.
           </p>
         </div>
-        <TeamPeriodSelector teams={teams} selectedTeamId={selectedTeam.id} year={year} month={month} />
+        <div className="flex w-full flex-col gap-2 lg:w-auto lg:items-end">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/team/board?team=${selectedTeam.id}`}>Доска задач</Link>
+          </Button>
+          <TeamPeriodSelector teams={teams} selectedTeamId={selectedTeam.id} year={year} month={month} />
+        </div>
       </header>
 
       {inviteLink ? (
