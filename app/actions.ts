@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getMonthTitle } from "@/lib/dates/month";
+import { getMonthTitle, getTodayKey } from "@/lib/dates/month";
 import { calculateScore } from "@/lib/metrics";
 import {
   copyMonthTemplate,
@@ -37,7 +37,10 @@ import {
   teamInviteSchema,
   teamInviteTokenSchema,
   teamSchema,
-  leaveTeamSchema
+  leaveTeamSchema,
+  teamChallengeSchema,
+  teamContributionSchema,
+  teamGoalSchema
 } from "@/lib/validators/tracker";
 import type { PlanningRuleMode } from "@/types/domain";
 
@@ -784,9 +787,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     return { ok: false, error: "Дата должна входить в выбранный месяц." };
   }
 
-  const entries = input.entries.filter(
-    (entry): entry is DailyEntryInput & { actualValue: number } => typeof entry.actualValue === "number"
-  );
+  const entries = input.entries;
   const taskIds = entries.map((entry) => entry.taskId);
 
   if (new Set(taskIds).size !== taskIds.length) {
@@ -818,7 +819,9 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     return { ok: false, error: "Факт можно внести только для задачи с планом на выбранный день." };
   }
 
-  const rows = entries.map((entry) => {
+  const rows = entries
+    .filter((entry): entry is DailyEntryInput & { actualValue: number } => typeof entry.actualValue === "number")
+    .map((entry) => {
     const actualValue = factValueSchema.parse(entry.actualValue);
 
     return {
@@ -829,12 +832,29 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
       actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
       note: entry.note?.trim() || null
     };
-  });
+    });
+
+  const clearedTaskIds = entries
+    .filter((entry) => entry.actualValue === null)
+    .map((entry) => entry.taskId);
 
   if (rows.length > 0) {
     const { error } = await supabase
       .from("daily_facts")
       .upsert(rows, { onConflict: "month_id,task_id,date" });
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
+  if (clearedTaskIds.length > 0) {
+    const { error } = await supabase
+      .from("daily_facts")
+      .delete()
+      .eq("month_id", input.monthId)
+      .eq("date", parsedDate.data)
+      .in("task_id", clearedTaskIds);
 
     if (error) {
       return { ok: false, error: error.message };
@@ -1114,6 +1134,164 @@ export async function updateTeamPrivacyAction(formData: FormData) {
   }
 
   revalidatePath("/team");
+}
+
+export async function createTeamGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamGoalSchema.parse({
+    teamId: formData.get("teamId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    unit: formData.get("unit"),
+    targetValue: formData.get("targetValue"),
+    startDate: formData.get("startDate"),
+    dueDate: formData.get("dueDate")
+  });
+
+  await requireTeamAdmin(supabase, userId, parsed.teamId);
+
+  const { error } = await supabase.from("team_goals").insert({
+    team_id: parsed.teamId,
+    created_by: userId,
+    title: parsed.title,
+    description: parsed.description || null,
+    unit: parsed.unit,
+    target_value: parsed.targetValue,
+    start_date: parsed.startDate || null,
+    due_date: parsed.dueDate || null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+}
+
+export async function createTeamChallengeAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamChallengeSchema.parse({
+    teamId: formData.get("teamId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    unit: formData.get("unit"),
+    targetValue: formData.get("targetValue"),
+    startDate: formData.get("startDate"),
+    dueDate: formData.get("dueDate"),
+    status: formData.get("status") || "active"
+  });
+
+  await requireTeamAdmin(supabase, userId, parsed.teamId);
+
+  const { error } = await supabase.from("team_challenges").insert({
+    team_id: parsed.teamId,
+    created_by: userId,
+    title: parsed.title,
+    description: parsed.description || null,
+    unit: parsed.unit,
+    target_value: parsed.targetValue,
+    status: parsed.status,
+    start_date: parsed.startDate || null,
+    due_date: parsed.dueDate || null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+}
+
+export async function addTeamGoalContributionAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamContributionSchema.parse({
+    teamId: formData.get("teamId"),
+    initiativeId: formData.get("initiativeId"),
+    value: formData.get("value"),
+    note: formData.get("note"),
+    date: formData.get("date")
+  });
+  const date = parsed.date ? dateKeySchema.parse(parsed.date) : getTodayKey();
+
+  const { data: goal, error: goalError } = await supabase
+    .from("team_goals")
+    .select("id, status")
+    .eq("id", parsed.initiativeId)
+    .eq("team_id", parsed.teamId)
+    .maybeSingle();
+
+  if (goalError || !goal || goal.status !== "active") {
+    throw new Error(goalError?.message ?? "Командная цель недоступна для вклада.");
+  }
+
+  const { error } = await supabase.from("team_goal_contributions").insert({
+    goal_id: goal.id,
+    user_id: userId,
+    value: parsed.value,
+    note: parsed.note || null,
+    date
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+}
+
+export async function addTeamChallengeCheckinAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = teamContributionSchema.parse({
+    teamId: formData.get("teamId"),
+    initiativeId: formData.get("initiativeId"),
+    value: formData.get("value"),
+    note: formData.get("note"),
+    date: formData.get("date")
+  });
+  const date = parsed.date ? dateKeySchema.parse(parsed.date) : getTodayKey();
+
+  const { data: challenge, error: challengeError } = await supabase
+    .from("team_challenges")
+    .select("id, status")
+    .eq("id", parsed.initiativeId)
+    .eq("team_id", parsed.teamId)
+    .maybeSingle();
+
+  if (challengeError || !challenge || challenge.status !== "active") {
+    throw new Error(challengeError?.message ?? "Челлендж недоступен для вклада.");
+  }
+
+  const { error } = await supabase.from("team_challenge_checkins").insert({
+    challenge_id: challenge.id,
+    user_id: userId,
+    value: parsed.value,
+    note: parsed.note || null,
+    date
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/team");
+}
+
+async function requireTeamAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  teamId: string
+) {
+  const { data: membership, error } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !membership || !["owner", "admin"].includes(membership.role)) {
+    throw new Error(error?.message ?? "Недостаточно прав для управления командными инициативами.");
+  }
 }
 
 function getLeaveTeamErrorMessage(message?: string) {

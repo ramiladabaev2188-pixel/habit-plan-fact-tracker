@@ -164,3 +164,27 @@ export const teamInviteTokenSchema = z.string().trim().min(12, "Некоррек
 export const leaveTeamSchema = z.object({
   teamId: z.string().uuid()
 });
+
+const teamInitiativeFields = z.object({
+  teamId: z.string().uuid(),
+  title: z.string().trim().min(2, "Название слишком короткое").max(120),
+  description: z.string().trim().max(800).optional(),
+  unit: z.string().trim().min(1, "Укажите единицу измерения").max(24),
+  targetValue: z.coerce.number().positive("Цель должна быть больше нуля").max(1_000_000),
+  startDate: z.string().trim().optional(),
+  dueDate: z.string().trim().optional()
+});
+
+export const teamGoalSchema = teamInitiativeFields;
+
+export const teamChallengeSchema = teamInitiativeFields.extend({
+  status: z.enum(["draft", "active"]).default("active")
+});
+
+export const teamContributionSchema = z.object({
+  teamId: z.string().uuid(),
+  initiativeId: z.string().uuid(),
+  value: z.coerce.number().positive("Вклад должен быть больше нуля").max(1_000_000),
+  note: z.string().trim().max(500).optional(),
+  date: z.string().trim().optional()
+});

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   archiveGoalAction,
@@ -16,7 +17,7 @@ import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { calculateTaskStats } from "@/lib/metrics";
-import { loadTrackerData } from "@/lib/supabase/data";
+import { loadGoalsPage, loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
 import type { Goal } from "@/types/domain";
 
@@ -42,7 +43,7 @@ const priorityLabels = {
 export default async function GoalsPage({
   searchParams
 }: {
-  searchParams: Promise<{ status?: string; type?: string; priority?: string; month?: string }>;
+  searchParams: Promise<{ status?: string; type?: string; priority?: string; month?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const result = await loadTrackerData(params.month);
@@ -59,14 +60,24 @@ export default async function GoalsPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { goals, goalTasks, tasks, plans, facts, months, selectedMonth } = result.data;
-  const taskStats = calculateTaskStats(plans, facts, tasks);
-  const filteredGoals = goals.filter((goal) => {
-    const statusOk = !params.status || params.status === "all" || goal.status === params.status;
-    const typeOk = !params.type || params.type === "all" || goal.type === params.type;
-    const priorityOk = !params.priority || params.priority === "all" || goal.priority === params.priority;
-    return statusOk && typeOk && priorityOk;
+  const { tasks, plans, facts, months, selectedMonth } = result.data;
+  const pageSize = 8;
+  const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
+  const goalsPage = await loadGoalsPage({
+    page: currentPage,
+    pageSize,
+    status: params.status,
+    type: params.type,
+    priority: params.priority
   });
+
+  if (goalsPage.error) {
+    return <ErrorState message={goalsPage.error} />;
+  }
+
+  const { goals, goalTasks } = goalsPage;
+  const taskStats = calculateTaskStats(plans, facts, tasks);
+  const totalPages = Math.max(1, Math.ceil(goalsPage.total / pageSize));
 
   return (
     <div className="space-y-5">
@@ -116,7 +127,7 @@ export default async function GoalsPage({
         <Button type="submit" className="sm:col-span-2 lg:col-span-4 lg:w-fit">Применить</Button>
       </form>
 
-      {filteredGoals.length === 0 ? (
+      {goals.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="text-lg font-semibold">Целей пока нет</div>
@@ -125,7 +136,7 @@ export default async function GoalsPage({
         </Card>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {filteredGoals.map((goal) => {
+          {goals.map((goal) => {
             const linkedTaskIds = goalTasks
               .filter((item) => item.goal_id === goal.id)
               .map((item) => item.task_id);
@@ -211,8 +222,35 @@ export default async function GoalsPage({
           })}
         </div>
       )}
+
+      {goalsPage.total > pageSize ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
+          <Button asChild variant="outline" size="sm" disabled={currentPage <= 1}>
+            <Link href={createPageHref(params, currentPage - 1)}>Назад</Link>
+          </Button>
+          <div className="text-sm text-muted-foreground">
+            Страница {currentPage} из {totalPages}
+          </div>
+          <Button asChild variant="outline" size="sm" disabled={currentPage >= totalPages}>
+            <Link href={createPageHref(params, currentPage + 1)}>Вперед</Link>
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function createPageHref(params: Record<string, string | undefined>, page: number) {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (key !== "page" && value) {
+      search.set(key, value);
+    }
+  }
+
+  search.set("page", String(Math.max(1, page)));
+  return `/goals?${search.toString()}`;
 }
 
 function GoalForm({

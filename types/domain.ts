@@ -5,6 +5,8 @@ export type GoalPriority = "low" | "medium" | "high";
 export type ThemePreference = "light" | "dark" | "system";
 export type TeamRole = "owner" | "admin" | "member";
 export type TeamMemberStatus = "active" | "left";
+export type TeamInitiativeStatus = "active" | "completed" | "archived";
+export type TeamChallengeStatus = "draft" | "active" | "completed" | "archived";
 export type PlanningRuleMode =
   | "daily"
   | "weekdays"
@@ -180,6 +182,56 @@ export type TeamInvite = {
   expires_at: string;
   accepted_at: string | null;
   accepted_by: string | null;
+  created_at: string;
+};
+
+export type TeamGoal = {
+  id: string;
+  team_id: string;
+  created_by: string;
+  title: string;
+  description: string | null;
+  unit: string;
+  target_value: number;
+  status: TeamInitiativeStatus;
+  start_date: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TeamGoalContribution = {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  value: number;
+  note: string | null;
+  date: string;
+  created_at: string;
+};
+
+export type TeamChallenge = {
+  id: string;
+  team_id: string;
+  created_by: string;
+  title: string;
+  description: string | null;
+  unit: string;
+  target_value: number;
+  status: TeamChallengeStatus;
+  start_date: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TeamChallengeCheckin = {
+  id: string;
+  challenge_id: string;
+  user_id: string;
+  value: number;
+  note: string | null;
+  date: string;
   created_at: string;
 };
 

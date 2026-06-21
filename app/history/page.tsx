@@ -10,9 +10,9 @@ import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { calculateMonthStats, calculateTaskStats } from "@/lib/metrics";
 import { getMainFocusTask } from "@/lib/recommendations";
-import { loadTrackerData } from "@/lib/supabase/data";
-import { createClient } from "@/lib/supabase/server";
+import { loadHistoryPage } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
+import type { DailyFact, DailyPlan, Month, Task } from "@/types/domain";
 
 export default async function HistoryPage({
   searchParams
@@ -20,7 +20,9 @@ export default async function HistoryPage({
   searchParams: Promise<{ page?: string }>;
 }) {
   const params = await searchParams;
-  const result = await loadTrackerData();
+  const pageSize = 8;
+  const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
+  const result = await loadHistoryPage({ page: currentPage, pageSize });
 
   if (!result.configured) {
     return <SetupNotice />;
@@ -34,52 +36,10 @@ export default async function HistoryPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { months, tasks } = result.data;
-  const supabase = await createClient();
-  const monthIds = months.map((month) => month.id);
-  const [plansResult, factsResult] = monthIds.length
-    ? await Promise.all([
-        supabase.from("daily_plans").select("*").in("month_id", monthIds).order("date"),
-        supabase.from("daily_facts").select("*").in("month_id", monthIds).order("date")
-      ])
-    : [
-        { data: [], error: null },
-        { data: [], error: null }
-      ];
-
-  if (plansResult.error || factsResult.error) {
-    return <ErrorState message={plansResult.error?.message ?? factsResult.error?.message ?? "Ошибка истории"} />;
-  }
-
-  const rows = months.map((month) => {
-    const monthPlans = (plansResult.data ?? [])
-      .filter((plan) => plan.month_id === month.id)
-      .map((plan) => ({
-        ...plan,
-        planned_value: Number(plan.planned_value),
-        planned_score: Number(plan.planned_score)
-      }));
-    const monthFacts = (factsResult.data ?? [])
-      .filter((fact) => fact.month_id === month.id)
-      .map((fact) => ({
-        ...fact,
-        actual_value: Number(fact.actual_value),
-        actual_score: Number(fact.actual_score)
-      }));
-    const stats = calculateMonthStats(monthPlans, monthFacts, tasks);
-    const taskStats = calculateTaskStats(monthPlans, monthFacts, tasks);
-    const focus = getMainFocusTask(taskStats);
-
-    return {
-      month,
-      stats,
-      focus
-    };
-  });
-  const pageSize = 8;
-  const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const pagedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const { months, chartMonths, tasks, plans, facts, total } = result.data;
+  const rows = buildRows(months, plans, facts, tasks);
+  const chartRows = buildRows(chartMonths, plans, facts, tasks);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="space-y-5">
@@ -94,7 +54,7 @@ export default async function HistoryPage({
         </CardHeader>
         <CardContent>
           <MonthComparisonChart
-            data={rows
+            data={chartRows
               .slice()
               .reverse()
               .map((row) => ({
@@ -107,7 +67,7 @@ export default async function HistoryPage({
       </Card>
 
       <div className="grid gap-4">
-        {pagedRows.map(({ month, stats, focus }) => (
+        {rows.map(({ month, stats, focus }) => (
           <Card key={month.id}>
             <CardContent className="grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="space-y-3">
@@ -159,7 +119,7 @@ export default async function HistoryPage({
         ))}
       </div>
 
-      {rows.length > pageSize ? (
+      {total > pageSize ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
           <Button asChild variant="outline" size="sm">
             <Link href={`/history?page=${Math.max(1, currentPage - 1)}`}>Назад</Link>
@@ -174,6 +134,21 @@ export default async function HistoryPage({
       ) : null}
     </div>
   );
+}
+
+function buildRows(
+  months: Month[],
+  plans: DailyPlan[],
+  facts: DailyFact[],
+  tasks: Task[]
+) {
+  return months.map((month) => {
+    const monthPlans = plans.filter((plan) => plan.month_id === month.id);
+    const monthFacts = facts.filter((fact) => fact.month_id === month.id);
+    const stats = calculateMonthStats(monthPlans, monthFacts, tasks);
+    const focus = getMainFocusTask(calculateTaskStats(monthPlans, monthFacts, tasks));
+    return { month, stats, focus };
+  });
 }
 
 function SmallStat({ label, value }: { label: string; value: string }) {

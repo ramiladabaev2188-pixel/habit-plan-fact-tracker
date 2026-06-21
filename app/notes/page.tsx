@@ -13,7 +13,8 @@ import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getTodayKey } from "@/lib/dates/month";
-import { loadTrackerData } from "@/lib/supabase/data";
+import { loadNotesPage, loadTrackerData } from "@/lib/supabase/data";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function NotesPage({
   searchParams
@@ -43,26 +44,38 @@ export default async function NotesPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { notes, months, selectedMonth, tasks, goals } = result.data;
-  const query = (params.q ?? "").toLowerCase().trim();
-  const tags = Array.from(new Set(notes.flatMap((note) => note.tags))).sort();
-  const filteredNotes = notes.filter((note) => {
-    const searchOk =
-      !query ||
-      note.title?.toLowerCase().includes(query) ||
-      note.content.toLowerCase().includes(query) ||
-      note.tags.some((tag) => tag.toLowerCase().includes(query));
-    const dateOk = !params.date || note.date === params.date;
-    const monthOk = !params.month || note.month_id === params.month;
-    const taskOk = !params.task || params.task === "all" || note.task_id === params.task;
-    const goalOk = !params.goal || params.goal === "all" || note.goal_id === params.goal;
-    const tagOk = !params.tag || params.tag === "all" || note.tags.includes(params.tag);
-    return searchOk && dateOk && monthOk && taskOk && goalOk && tagOk;
-  });
+  const { months, selectedMonth, tasks } = result.data;
+  const currentUserId = result.user.id;
   const pageSize = 10;
   const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
-  const totalPages = Math.max(1, Math.ceil(filteredNotes.length / pageSize));
-  const pagedNotes = filteredNotes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const [notesPage, goalsResult] = await Promise.all([
+    loadNotesPage({
+      page: currentPage,
+      pageSize,
+      query: params.q,
+      date: params.date,
+      monthId: params.month,
+      taskId: params.task === "all" ? undefined : params.task,
+      goalId: params.goal === "all" ? undefined : params.goal,
+      tag: params.tag === "all" ? undefined : params.tag
+    }),
+    createClient().then((supabase) =>
+      supabase
+        .from("goals")
+        .select("*")
+        .eq("user_id", currentUserId)
+        .order("created_at", { ascending: false })
+        .limit(100)
+    )
+  ]);
+
+  if (notesPage.error || goalsResult.error) {
+    return <ErrorState message={notesPage.error ?? goalsResult.error?.message ?? "Не удалось загрузить заметки"} />;
+  }
+
+  const notes = notesPage.notes;
+  const goals = goalsResult.data ?? [];
+  const totalPages = Math.max(1, Math.ceil(notesPage.total / pageSize));
 
   return (
     <div className="space-y-5">
@@ -136,21 +149,14 @@ export default async function NotesPage({
             </div>
             <div className="space-y-2">
               <Label>Тег</Label>
-              <Select name="tag" defaultValue={params.tag ?? "all"}>
-                <option value="all">Все теги</option>
-                {tags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
-              </Select>
+              <Input name="tag" defaultValue={params.tag === "all" ? "" : params.tag ?? ""} placeholder="Например, итог" />
             </div>
             <Button type="submit" className="md:col-span-3 xl:col-span-1">Применить</Button>
           </form>
         </CardContent>
       </Card>
 
-      {filteredNotes.length === 0 ? (
+      {notes.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="text-lg font-semibold">Заметок пока нет</div>
@@ -159,7 +165,7 @@ export default async function NotesPage({
         </Card>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {pagedNotes.map((note) => {
+          {notes.map((note) => {
             const task = tasks.find((item) => item.id === note.task_id);
             const goal = goals.find((item) => item.id === note.goal_id);
             const month = months.find((item) => item.id === note.month_id);
@@ -234,7 +240,7 @@ export default async function NotesPage({
         </div>
       )}
 
-      {filteredNotes.length > pageSize ? (
+      {notesPage.total > pageSize ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
           <Button asChild variant="outline" size="sm" disabled={currentPage <= 1}>
             <Link href={createPageHref(params, currentPage - 1)}>Назад</Link>

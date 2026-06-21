@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, ClipboardCheck, Copy, Save } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Copy, Save, Undo2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { saveDailyFactsAction } from "@/app/actions";
@@ -46,6 +46,18 @@ type DailyItem = {
   fact: DailyFact | null;
 };
 
+type UndoSnapshot = {
+  values: DailyForm;
+  filledTaskIds: string[];
+};
+
+function cloneFormValues(values: DailyForm): DailyForm {
+  return {
+    entries: values.entries.map((entry) => ({ ...entry })),
+    dailyNote: values.dailyNote ? { ...values.dailyNote } : undefined
+  };
+}
+
 export function DailyInput({
   monthId,
   date,
@@ -65,10 +77,12 @@ export function DailyInput({
   const [isPending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
   const [filledTaskIds, setFilledTaskIds] = useState<Set<string>>(
     () => new Set(items.filter((item) => item.fact).map((item) => item.task.id))
   );
   const initialRender = useRef(true);
+  const undoSnapshotRef = useRef<UndoSnapshot | null>(null);
   const defaultValues = useMemo<DailyForm>(
     () => ({
       entries: items.map((item) => ({
@@ -120,8 +134,22 @@ export function DailyInput({
   useEffect(() => {
     form.reset(defaultValues);
     setFilledTaskIds(new Set(items.filter((item) => item.fact).map((item) => item.task.id)));
+    undoSnapshotRef.current = null;
+    setCanUndo(false);
     initialRender.current = true;
   }, [defaultValues, form, items]);
+
+  const captureUndoSnapshot = useCallback(() => {
+    if (readOnly) {
+      return;
+    }
+
+    undoSnapshotRef.current = {
+      values: cloneFormValues(form.getValues()),
+      filledTaskIds: Array.from(filledTaskIds)
+    };
+    setCanUndo(true);
+  }, [filledTaskIds, form, readOnly]);
 
   const markFilled = useCallback((taskId: string) => {
     setFilledTaskIds((current) => {
@@ -131,23 +159,19 @@ export function DailyInput({
     });
   }, []);
 
-  const setFactValue = useCallback((index: number, taskId: string, value: number) => {
+  const setFactValue = useCallback((index: number, taskId: string, value: number, recordUndo = true) => {
+    if (recordUndo) {
+      captureUndoSnapshot();
+    }
     form.setValue(`entries.${index}.actualValue`, value, { shouldDirty: true, shouldValidate: true });
     markFilled(taskId);
-  }, [form, markFilled]);
+  }, [captureUndoSnapshot, form, markFilled]);
 
   const save = useCallback(async (values: DailyForm) => {
-    const completedEntries = values.entries
-      .filter((entry): entry is typeof entry & { actualValue: number } => entry.actualValue !== null)
-      .map((entry) => ({
-        ...entry,
-        actualValue: entry.actualValue
-      }));
-
     const result = await saveDailyFactsAction({
         monthId,
         date,
-        entries: completedEntries,
+        entries: values.entries,
         dailyNote: values.dailyNote
       })
       .catch((error: unknown) => ({
@@ -167,21 +191,24 @@ export function DailyInput({
   }, [date, monthId, router]);
 
   const closePlannedAsDone = useCallback(() => {
+    captureUndoSnapshot();
     items.forEach((item, index) => {
-      setFactValue(index, item.task.id, Math.min(2, Math.max(0, item.plan.planned_value)));
+      setFactValue(index, item.task.id, Math.min(2, Math.max(0, item.plan.planned_value)), false);
     });
-  }, [items, setFactValue]);
+  }, [captureUndoSnapshot, items, setFactValue]);
 
   const markUnfilledAsZero = useCallback(() => {
+    captureUndoSnapshot();
     items.forEach((item, index) => {
       if (!filledTaskIds.has(item.task.id)) {
-        setFactValue(index, item.task.id, 0);
+        setFactValue(index, item.task.id, 0, false);
       }
     });
-  }, [filledTaskIds, items, setFactValue]);
+  }, [captureUndoSnapshot, filledTaskIds, items, setFactValue]);
 
   const copyYesterday = useCallback(() => {
     const copiedTaskIds = new Set<string>();
+    captureUndoSnapshot();
 
     items.forEach((item, index) => {
       const yesterday = yesterdayByTask.get(item.task.id);
@@ -198,7 +225,23 @@ export function DailyInput({
     if (copiedTaskIds.size > 0) {
       setFilledTaskIds((current) => new Set([...current, ...copiedTaskIds]));
     }
-  }, [form, items, yesterdayByTask]);
+  }, [captureUndoSnapshot, form, items, yesterdayByTask]);
+
+  const undoLastChange = useCallback(() => {
+    const snapshot = undoSnapshotRef.current;
+
+    if (!snapshot || readOnly) {
+      return;
+    }
+
+    form.reset(cloneFormValues(snapshot.values));
+    setFilledTaskIds(new Set(snapshot.filledTaskIds));
+    undoSnapshotRef.current = null;
+    setCanUndo(false);
+    startTransition(() => {
+      void save(snapshot.values);
+    });
+  }, [form, readOnly, save]);
 
   useEffect(() => {
     if (initialRender.current) {
@@ -346,6 +389,7 @@ export function DailyInput({
                       placeholder={hasFact ? "Комментарий к задаче" : "Сначала выберите факт"}
                       className="min-h-16"
                       disabled={readOnly || !hasFact}
+                      onFocus={captureUndoSnapshot}
                       {...form.register(`entries.${index}.note`)}
                     />
                     {form.formState.errors.entries?.[index]?.actualValue ? (
@@ -373,12 +417,13 @@ export function DailyInput({
               className="min-h-24"
               placeholder="Что сработало, что помешало, что улучшить завтра"
               disabled={readOnly}
+              onFocus={captureUndoSnapshot}
               {...form.register("dailyNote.content")}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="daily-mood">Настроение</Label>
-            <Select id="daily-mood" disabled={readOnly} {...form.register("dailyNote.mood")}>
+            <Select id="daily-mood" disabled={readOnly} onFocus={captureUndoSnapshot} {...form.register("dailyNote.mood")}>
               <option value="">Не выбрано</option>
               <option value="спокойно">Спокойно</option>
               <option value="хорошо">Хорошо</option>
@@ -398,7 +443,10 @@ export function DailyInput({
                   className="h-auto min-h-14 flex-col gap-1 px-2 py-2 text-xs"
                   disabled={readOnly}
                   aria-label={`Энергия: ${option.value}, ${option.label}`}
-                  onClick={() => form.setValue("dailyNote.energy", option.value, { shouldDirty: true })}
+                  onClick={() => {
+                    captureUndoSnapshot();
+                    form.setValue("dailyNote.energy", option.value, { shouldDirty: true });
+                  }}
                 >
                   <span className="text-base font-semibold">{option.value}</span>
                   <span className="hidden leading-tight sm:inline">{option.label}</span>
@@ -425,10 +473,16 @@ export function DailyInput({
             <div className="mt-1 font-medium text-destructive">{saveError}</div>
           ) : null}
         </div>
-        <Button type="submit" disabled={isPending || readOnly}>
-          <Save className="h-4 w-4" />
-          Сохранить день
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button type="button" variant="outline" disabled={isPending || readOnly || !canUndo} onClick={undoLastChange}>
+            <Undo2 className="h-4 w-4" />
+            Отменить
+          </Button>
+          <Button type="submit" disabled={isPending || readOnly}>
+            <Save className="h-4 w-4" />
+            Сохранить день
+          </Button>
+        </div>
       </div>
     </form>
   );

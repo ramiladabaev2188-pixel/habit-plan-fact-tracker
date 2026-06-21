@@ -32,8 +32,62 @@ export type TrackerLoadResult =
       error: string | null;
     };
 
-export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResult> {
+export type TrackerLoadOptions = {
+  includeGoals?: boolean;
+  includeNotes?: boolean;
+  dailyNotesScope?: "none" | "selected-month" | "all";
+};
+
+export type NotePageFilters = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  date?: string;
+  monthId?: string;
+  taskId?: string;
+  goalId?: string;
+  tag?: string;
+};
+
+export type GoalPageFilters = {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  type?: string;
+  priority?: string;
+};
+
+export type HistoryPageOptions = {
+  page?: number;
+  pageSize?: number;
+  chartMonthsLimit?: number;
+};
+
+export type HistoryLoadResult =
+  | { configured: false; user: null; data: null; error: null }
+  | {
+      configured: true;
+      user: User | null;
+      data: {
+        months: Month[];
+        chartMonths: Month[];
+        tasks: Task[];
+        plans: DailyPlan[];
+        facts: DailyFact[];
+        total: number;
+      } | null;
+      error: string | null;
+    };
+
+export async function loadTrackerData(
+  monthId?: string,
+  options: TrackerLoadOptions = {}
+): Promise<TrackerLoadResult> {
   noStore();
+
+  const includeGoals = options.includeGoals ?? false;
+  const includeNotes = options.includeNotes ?? false;
+  const dailyNotesScope = options.dailyNotesScope ?? "selected-month";
 
   if (!isSupabaseConfigured()) {
     return { configured: false, user: null, data: null, error: null };
@@ -67,18 +121,7 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
     { onConflict: "user_id" }
   );
 
-  const [
-    profileResult,
-    categoriesResult,
-    tasksResult,
-    monthsResult,
-    goalsResult,
-    goalTasksResult,
-    notesResult,
-    planningRulesResult,
-    dailyNotesResult,
-    preferencesResult
-  ] = await Promise.all([
+  const [profileResult, categoriesResult, tasksResult, monthsResult, planningRulesResult, preferencesResult] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("categories").select("*").eq("user_id", user.id).order("sort_order").order("name"),
     supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at"),
@@ -88,11 +131,7 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
       .eq("user_id", user.id)
       .order("year", { ascending: false })
       .order("month", { ascending: false }),
-    supabase.from("goals").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("goal_tasks").select("*"),
-    supabase.from("notes").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
     supabase.from("task_planning_rules").select("*").eq("user_id", user.id),
-    supabase.from("daily_notes").select("*").eq("user_id", user.id).order("date", { ascending: false }),
     supabase.from("user_preferences").select("*").eq("user_id", user.id).maybeSingle()
   ]);
 
@@ -101,11 +140,7 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
     categoriesResult.error?.message ??
     tasksResult.error?.message ??
     monthsResult.error?.message ??
-    goalsResult.error?.message ??
-    goalTasksResult.error?.message ??
-    notesResult.error?.message ??
     planningRulesResult.error?.message ??
-    dailyNotesResult.error?.message ??
     preferencesResult.error?.message ??
     null;
 
@@ -123,28 +158,59 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
     months[0] ??
     null;
 
-  const [plansResult, factsResult] = selectedMonth
-    ? await Promise.all([
-        supabase
+  const [plansResult, factsResult, dailyNotesResult, goalsResult, notesResult] = await Promise.all([
+    selectedMonth
+      ? supabase
           .from("daily_plans")
           .select("*")
           .eq("month_id", selectedMonth.id)
-          .order("date"),
-        supabase
+          .order("date")
+      : Promise.resolve({ data: [], error: null }),
+    selectedMonth
+      ? supabase
           .from("daily_facts")
           .select("*")
           .eq("month_id", selectedMonth.id)
           .order("date")
-      ])
-    : [
-        { data: [], error: null },
-        { data: [], error: null }
-      ];
+      : Promise.resolve({ data: [], error: null }),
+    dailyNotesScope === "all"
+      ? supabase.from("daily_notes").select("*").eq("user_id", user.id).order("date", { ascending: false })
+      : dailyNotesScope === "selected-month" && selectedMonth
+        ? supabase
+            .from("daily_notes")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("month_id", selectedMonth.id)
+            .order("date", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+    includeGoals
+      ? supabase.from("goals").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    includeNotes
+      ? supabase.from("notes").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null })
+  ]);
 
-  const monthDataError = plansResult.error?.message ?? factsResult.error?.message ?? null;
+  const monthDataError =
+    plansResult.error?.message ??
+    factsResult.error?.message ??
+    dailyNotesResult.error?.message ??
+    goalsResult.error?.message ??
+    notesResult.error?.message ??
+    null;
 
   if (monthDataError) {
     return { configured: true, user, data: null, error: monthDataError };
+  }
+
+  const goals = (goalsResult.data ?? []).map(normalizeGoal);
+  const goalIds = goals.map((goal) => goal.id);
+  const goalTasksResult = includeGoals && goalIds.length
+    ? await supabase.from("goal_tasks").select("*").in("goal_id", goalIds)
+    : { data: [], error: null };
+
+  if (goalTasksResult.error) {
+    return { configured: true, user, data: null, error: goalTasksResult.error.message };
   }
 
   return {
@@ -158,7 +224,7 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
       selectedMonth,
       plans: (plansResult.data ?? []).map(normalizeDailyPlan),
       facts: (factsResult.data ?? []).map(normalizeDailyFact),
-      goals: (goalsResult.data ?? []).map(normalizeGoal),
+      goals,
       goalTasks: (goalTasksResult.data ?? []).map(normalizeGoalTask),
       notes: (notesResult.data ?? []).map(normalizeNote),
       planningRules: (planningRulesResult.data ?? []).map(normalizePlanningRule),
@@ -167,6 +233,173 @@ export async function loadTrackerData(monthId?: string): Promise<TrackerLoadResu
     },
     error: null
   };
+}
+
+export async function loadNotesPage(filters: NotePageFilters) {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { notes: [] as Note[], total: 0, error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 10, 1), 50);
+  const page = Math.max(filters.page ?? 1, 1);
+  let query = supabase
+    .from("notes")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  const search = sanitizeSearch(filters.query);
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
+  }
+  if (filters.date) query = query.eq("date", filters.date);
+  if (filters.monthId) query = query.eq("month_id", filters.monthId);
+  if (filters.taskId) query = query.eq("task_id", filters.taskId);
+  if (filters.goalId) query = query.eq("goal_id", filters.goalId);
+  if (filters.tag) query = query.contains("tags", [filters.tag]);
+
+  const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
+  return {
+    notes: (data ?? []).map(normalizeNote),
+    total: count ?? 0,
+    error: error?.message ?? null
+  };
+}
+
+export async function loadGoalsPage(filters: GoalPageFilters) {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { goals: [] as Goal[], goalTasks: [] as GoalTask[], total: 0, error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 10, 1), 50);
+  const page = Math.max(filters.page ?? 1, 1);
+  let query = supabase
+    .from("goals")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (["active", "completed", "paused", "archived"].includes(filters.status ?? "")) {
+    query = query.eq("status", filters.status as "active" | "completed" | "paused" | "archived");
+  }
+  if (["long_term", "monthly", "weekly"].includes(filters.type ?? "")) {
+    query = query.eq("type", filters.type as "long_term" | "monthly" | "weekly");
+  }
+  if (["low", "medium", "high"].includes(filters.priority ?? "")) {
+    query = query.eq("priority", filters.priority as "low" | "medium" | "high");
+  }
+
+  const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
+  if (error) {
+    return { goals: [] as Goal[], goalTasks: [] as GoalTask[], total: 0, error: error.message };
+  }
+
+  const goals = (data ?? []).map(normalizeGoal);
+  const goalIds = goals.map((goal) => goal.id);
+  const { data: goalTasks, error: goalTasksError } = goalIds.length
+    ? await supabase.from("goal_tasks").select("*").in("goal_id", goalIds)
+    : { data: [], error: null };
+
+  return {
+    goals,
+    goalTasks: (goalTasks ?? []).map(normalizeGoalTask),
+    total: count ?? 0,
+    error: goalTasksError?.message ?? null
+  };
+}
+
+export async function loadHistoryPage(options: HistoryPageOptions = {}): Promise<HistoryLoadResult> {
+  noStore();
+
+  if (!isSupabaseConfigured()) {
+    return { configured: false, user: null, data: null, error: null };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    return { configured: true, user: null, data: null, error: userError.message };
+  }
+  if (!user) {
+    return { configured: true, user: null, data: null, error: null };
+  }
+
+  const pageSize = Math.min(Math.max(options.pageSize ?? 8, 1), 24);
+  const page = Math.max(options.page ?? 1, 1);
+  const chartMonthsLimit = Math.min(Math.max(options.chartMonthsLimit ?? 12, 1), 24);
+  const [monthsResult, chartMonthsResult, tasksResult] = await Promise.all([
+    supabase
+      .from("months")
+      .select("*", { count: "exact" })
+      .eq("user_id", user.id)
+      .order("year", { ascending: false })
+      .order("month", { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1),
+    supabase
+      .from("months")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("year", { ascending: false })
+      .order("month", { ascending: false })
+      .limit(chartMonthsLimit),
+    supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at")
+  ]);
+
+  const baseError = monthsResult.error?.message ?? chartMonthsResult.error?.message ?? tasksResult.error?.message ?? null;
+  if (baseError) {
+    return { configured: true, user, data: null, error: baseError };
+  }
+
+  const months = (monthsResult.data ?? []).map(normalizeMonth);
+  const chartMonths = (chartMonthsResult.data ?? []).map(normalizeMonth);
+  const monthIds = Array.from(new Set([...months, ...chartMonths].map((month) => month.id)));
+  const [plansResult, factsResult] = monthIds.length
+    ? await Promise.all([
+        supabase.from("daily_plans").select("*").in("month_id", monthIds).order("date"),
+        supabase.from("daily_facts").select("*").in("month_id", monthIds).order("date")
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+
+  const dataError = plansResult.error?.message ?? factsResult.error?.message ?? null;
+  if (dataError) {
+    return { configured: true, user, data: null, error: dataError };
+  }
+
+  return {
+    configured: true,
+    user,
+    data: {
+      months,
+      chartMonths,
+      tasks: (tasksResult.data ?? []).map(normalizeTask),
+      plans: (plansResult.data ?? []).map(normalizeDailyPlan),
+      facts: (factsResult.data ?? []).map(normalizeDailyFact),
+      total: monthsResult.count ?? 0
+    },
+    error: null
+  };
+}
+
+function sanitizeSearch(value?: string) {
+  return (value ?? "").replace(/[,%()]/g, " ").trim().slice(0, 120);
 }
 
 export function normalizeProfile(row: Profile): Profile {

@@ -483,6 +483,132 @@ export type Database = {
         };
         Relationships: [];
       };
+      team_goals: {
+        Row: {
+          id: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description: string | null;
+          unit: string;
+          target_value: number;
+          status: "active" | "completed" | "archived";
+          start_date: string | null;
+          due_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description?: string | null;
+          unit?: string;
+          target_value: number;
+          status?: "active" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          unit?: string;
+          target_value?: number;
+          status?: "active" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_goal_contributions: {
+        Row: {
+          id: string;
+          goal_id: string;
+          user_id: string;
+          value: number;
+          note: string | null;
+          date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          goal_id: string;
+          user_id: string;
+          value: number;
+          note?: string | null;
+          date?: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      team_challenges: {
+        Row: {
+          id: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description: string | null;
+          unit: string;
+          target_value: number;
+          status: "draft" | "active" | "completed" | "archived";
+          start_date: string | null;
+          due_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          created_by: string;
+          title: string;
+          description?: string | null;
+          unit?: string;
+          target_value: number;
+          status?: "draft" | "active" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          unit?: string;
+          target_value?: number;
+          status?: "draft" | "active" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_challenge_checkins: {
+        Row: {
+          id: string;
+          challenge_id: string;
+          user_id: string;
+          value: number;
+          note: string | null;
+          date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          challenge_id: string;
+          user_id: string;
+          value: number;
+          note?: string | null;
+          date?: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       change_logs: {
         Row: {
           id: string;

@@ -6,6 +6,10 @@ import type {
   Month,
   Task,
   Team,
+  TeamChallenge,
+  TeamChallengeCheckin,
+  TeamGoal,
+  TeamGoalContribution,
   TeamInvite,
   TeamMember
 } from "@/types/domain";
@@ -40,6 +44,10 @@ export type TeamDashboardData = {
   tasks: Task[];
   plans: DailyPlan[];
   facts: DailyFact[];
+  teamGoals: TeamGoal[];
+  teamGoalContributions: TeamGoalContribution[];
+  teamChallenges: TeamChallenge[];
+  teamChallengeCheckins: TeamChallengeCheckin[];
 };
 
 export type TeamDashboardResult =
@@ -137,13 +145,17 @@ export async function loadTeamDashboardData({
         months: [],
         tasks: [],
         plans: [],
-        facts: []
+        facts: [],
+        teamGoals: [],
+        teamGoalContributions: [],
+        teamChallenges: [],
+        teamChallengeCheckins: []
       },
       error: null
     };
   }
 
-  const [membersResult, invitesResult, preferenceResult] = await Promise.all([
+  const [membersResult, invitesResult, preferenceResult, teamGoalsResult, teamChallengesResult] = await Promise.all([
     supabase
       .from("team_members")
       .select("*")
@@ -162,12 +174,25 @@ export async function loadTeamDashboardData({
       .eq("team_id", selectedTeam.id)
       .eq("user_id", user.id)
       .maybeSingle()
+    ,
+    supabase
+      .from("team_goals")
+      .select("*")
+      .eq("team_id", selectedTeam.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("team_challenges")
+      .select("*")
+      .eq("team_id", selectedTeam.id)
+      .order("created_at", { ascending: false })
   ]);
 
   const teamError =
     membersResult.error?.message ??
     invitesResult.error?.message ??
     preferenceResult.error?.message ??
+    teamGoalsResult.error?.message ??
+    teamChallengesResult.error?.message ??
     null;
 
   if (teamError) {
@@ -176,6 +201,10 @@ export async function loadTeamDashboardData({
 
   const members = (membersResult.data ?? []) as TeamMember[];
   const userIds = Array.from(new Set(members.map((member) => member.user_id)));
+  const teamGoals = (teamGoalsResult.data ?? []).map(normalizeTeamGoal);
+  const teamChallenges = (teamChallengesResult.data ?? []).map(normalizeTeamChallenge);
+  const teamGoalIds = teamGoals.map((goal) => goal.id);
+  const teamChallengeIds = teamChallenges.map((challenge) => challenge.id);
 
   const [profilesResult, monthsResult, tasksResult] = userIds.length
     ? await Promise.all([
@@ -207,17 +236,27 @@ export async function loadTeamDashboardData({
   const months = (monthsResult.data ?? []).map(normalizeMonth);
   const monthIds = months.map((item) => item.id);
 
-  const [plansResult, factsResult] = monthIds.length
-    ? await Promise.all([
-        supabase.from("daily_plans").select("*").in("month_id", monthIds),
-        supabase.from("daily_facts").select("*").in("month_id", monthIds)
-      ])
-    : [
-        { data: [], error: null },
-        { data: [], error: null }
-      ];
+  const [plansResult, factsResult, goalContributionsResult, challengeCheckinsResult] = await Promise.all([
+    monthIds.length
+      ? supabase.from("daily_plans").select("*").in("month_id", monthIds)
+      : Promise.resolve({ data: [], error: null }),
+    monthIds.length
+      ? supabase.from("daily_facts").select("*").in("month_id", monthIds)
+      : Promise.resolve({ data: [], error: null }),
+    teamGoalIds.length
+      ? supabase.from("team_goal_contributions").select("*").in("goal_id", teamGoalIds).order("date", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    teamChallengeIds.length
+      ? supabase.from("team_challenge_checkins").select("*").in("challenge_id", teamChallengeIds).order("date", { ascending: false })
+      : Promise.resolve({ data: [], error: null })
+  ]);
 
-  const monthDataError = plansResult.error?.message ?? factsResult.error?.message ?? null;
+  const monthDataError =
+    plansResult.error?.message ??
+    factsResult.error?.message ??
+    goalContributionsResult.error?.message ??
+    challengeCheckinsResult.error?.message ??
+    null;
 
   if (monthDataError) {
     return { configured: true, user, data: null, error: monthDataError };
@@ -239,8 +278,28 @@ export async function loadTeamDashboardData({
       months,
       tasks: (tasksResult.data ?? []).map(normalizeTask),
       plans: (plansResult.data ?? []).map(normalizeDailyPlan),
-      facts: (factsResult.data ?? []).map(normalizeDailyFact)
+      facts: (factsResult.data ?? []).map(normalizeDailyFact),
+      teamGoals,
+      teamGoalContributions: (goalContributionsResult.data ?? []).map(normalizeTeamGoalContribution),
+      teamChallenges,
+      teamChallengeCheckins: (challengeCheckinsResult.data ?? []).map(normalizeTeamChallengeCheckin)
     },
     error: null
   };
+}
+
+function normalizeTeamGoal(row: TeamGoal): TeamGoal {
+  return { ...row, target_value: Number(row.target_value) };
+}
+
+function normalizeTeamGoalContribution(row: TeamGoalContribution): TeamGoalContribution {
+  return { ...row, value: Number(row.value) };
+}
+
+function normalizeTeamChallenge(row: TeamChallenge): TeamChallenge {
+  return { ...row, target_value: Number(row.target_value) };
+}
+
+function normalizeTeamChallengeCheckin(row: TeamChallengeCheckin): TeamChallengeCheckin {
+  return { ...row, value: Number(row.value) };
 }
