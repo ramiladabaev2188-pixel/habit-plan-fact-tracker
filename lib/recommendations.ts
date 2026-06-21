@@ -13,47 +13,74 @@ export type CategoryRisk = {
 export type MonthlyInsightInput = {
   monthCompletion: number;
   forecastPercent: number;
+  targetPercent?: number;
   taskStats: TaskStat[];
   categoryStats: CategoryRisk[];
   zeroFactDays: DailyStat[];
 };
 
-export function getMainFocusTask(taskStats: TaskStat[]) {
-  return [...taskStats]
-    .filter((task) => task.planScore > 0)
+export function getMainFocusTask(taskStats: TaskStat[], targetPercent = 0.8) {
+  const risks = getRiskTasks(taskStats, Number.POSITIVE_INFINITY, targetPercent);
+
+  return [...risks]
     .sort((a, b) => {
-      if (b.requiredPerDay !== a.requiredPerDay) {
-        return b.requiredPerDay - a.requiredPerDay;
+      if (b.pressureRatio !== a.pressureRatio) {
+        return b.pressureRatio - a.pressureRatio;
       }
 
-      return b.gapScore - a.gapScore;
+      if (a.forecastPercent !== b.forecastPercent) {
+        return a.forecastPercent - b.forecastPercent;
+      }
+
+      return b.planScore - a.planScore;
     })[0] ?? null;
 }
 
-export function getRiskTasks(taskStats: TaskStat[], limit = 5) {
+export function getRiskTasks(taskStats: TaskStat[], limit = 5, targetPercent = 0.8) {
   return [...taskStats]
-    .filter((task) => task.planScore > 0 && task.completion < 0.8)
+    .filter(
+      (task) =>
+        task.planScore > 0 &&
+        task.hasElapsedPlan &&
+        task.forecastPercent < targetPercent
+    )
     .sort((a, b) => {
-      if (a.completion !== b.completion) {
-        return a.completion - b.completion;
+      if (a.pressureRatio !== b.pressureRatio) {
+        return b.pressureRatio - a.pressureRatio;
       }
 
-      return b.gapScore - a.gapScore;
+      if (a.forecastPercent !== b.forecastPercent) {
+        return a.forecastPercent - b.forecastPercent;
+      }
+
+      return b.planScore - a.planScore;
     })
     .slice(0, limit);
 }
 
-export function getStrongTasks(taskStats: TaskStat[], limit = 5) {
+export function getStrongTasks(taskStats: TaskStat[], limit = 5, targetPercent = 0.8) {
   return [...taskStats]
-    .filter((task) => task.planScore > 0 && task.completion >= 0.8)
-    .sort((a, b) => b.completion - a.completion)
+    .filter(
+      (task) =>
+        task.planScore > 0 &&
+        task.hasElapsedPlan &&
+        task.forecastPercent >= targetPercent
+    )
+    .sort((a, b) => b.forecastPercent - a.forecastPercent || b.planScore - a.planScore)
     .slice(0, limit);
 }
 
-export function getCategoryRisks(categoryStats: CategoryRisk[], limit = 3) {
+export function getCategoryRisks(categoryStats: CategoryRisk[], limit = 3, targetPercent = 0.8) {
   return [...categoryStats]
-    .filter((category) => category.planScore > 0 && category.completion < 0.8)
-    .sort((a, b) => a.completion - b.completion)
+    .filter(
+      (category) =>
+        category.planScore > 0 &&
+        (category.forecastPercent ?? category.completion) < targetPercent
+    )
+    .sort(
+      (a, b) =>
+        (a.forecastPercent ?? a.completion) - (b.forecastPercent ?? b.completion)
+    )
     .slice(0, limit);
 }
 
@@ -86,12 +113,17 @@ export function generateDailyRecommendations({
 
 export function generateWeeklyRecommendations(week: WeeklyReport) {
   const recommendations: string[] = [];
+  const pacePercent = week.pacePercent ?? week.completion;
+
+  if (week.timeState === "future") {
+    return ["Неделя впереди: не оценивайте ее как просадку до первого планового дня."];
+  }
 
   if (week.planScore <= 0) {
     return ["В неделе нет плана — используйте ее для восстановления или подготовки."];
   }
 
-  if (week.completion < 0.8) {
+  if (pacePercent < 0.8) {
     recommendations.push("Неделя ниже 80% — сократите лишнее и верните регулярность по базовым задачам.");
   } else {
     recommendations.push("Недельный темп рабочий — повторите текущий ритм на следующей неделе.");
@@ -110,22 +142,21 @@ export function generateWeeklyRecommendations(week: WeeklyReport) {
 
 export function generateMonthlyInsights(stats: MonthlyInsightInput) {
   const insights: string[] = [];
-  const focus = getMainFocusTask(stats.taskStats);
-  const categoryRisk = getCategoryRisks(stats.categoryStats, 1)[0];
+  const targetPercent = stats.targetPercent ?? 0.8;
+  const focus = getMainFocusTask(stats.taskStats, targetPercent);
+  const categoryRisk = getCategoryRisks(stats.categoryStats, 1, targetPercent)[0];
 
-  if (stats.monthCompletion < 0.8) {
-    insights.push("Текущий факт ниже правила 80% — фокус на закрытии плановых дней.");
-  }
-
-  if (stats.forecastPercent < 0.8) {
+  if (stats.forecastPercent < targetPercent) {
     insights.push("Прогноз ниже цели — нужно усилить задачи с большим весом.");
+  } else {
+    insights.push("Текущий темп соответствует цели: ориентируйтесь на прогноз, а не на неполный факт месяца.");
   }
 
   if (focus) {
     insights.push(`Главная задача на сегодня: ${focus.title} (${focus.requiredPerDay} балла/день).`);
   }
 
-  if (categoryRisk && categoryRisk.completion < 0.6) {
+  if (categoryRisk && (categoryRisk.forecastPercent ?? categoryRisk.completion) < 0.6) {
     insights.push(`Категория ${categoryRisk.categoryName} проседает сильнее всего.`);
   }
 
@@ -133,18 +164,15 @@ export function generateMonthlyInsights(stats: MonthlyInsightInput) {
     insights.push(`Есть ${stats.zeroFactDays.length} дней с планом и нулевым фактом.`);
   }
 
-  if (stats.monthCompletion >= 0.8) {
-    insights.push("Месяц идет по целевому правилу 80%+.");
-  }
-
   return insights;
 }
 
 export function getNextActions(stats: MonthlyInsightInput) {
   const actions: string[] = [];
-  const riskTasks = getRiskTasks(stats.taskStats, 3);
-  const focus = getMainFocusTask(stats.taskStats);
-  const categoryRisks = getCategoryRisks(stats.categoryStats, 2);
+  const targetPercent = stats.targetPercent ?? 0.8;
+  const riskTasks = getRiskTasks(stats.taskStats, 3, targetPercent);
+  const focus = getMainFocusTask(stats.taskStats, targetPercent);
+  const categoryRisks = getCategoryRisks(stats.categoryStats, 2, targetPercent);
 
   if (focus) {
     actions.push(`Поставить первым делом задачу “${focus.title}”.`);

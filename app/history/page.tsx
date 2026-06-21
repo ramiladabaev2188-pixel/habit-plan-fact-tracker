@@ -82,7 +82,7 @@ export default async function HistoryPage({
   const pagedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">История месяцев</h1>
         <p className="text-sm text-muted-foreground">Сравнение месяцев, статусы и доступ к отчетам.</p>

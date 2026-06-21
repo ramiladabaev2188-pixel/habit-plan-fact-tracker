@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type * as React from "react";
-import { Activity, AlertTriangle, CalendarCheck, Target, TrendingUp } from "lucide-react";
+import { Activity, AlertTriangle, BatteryMedium, CalendarCheck, Target, TrendingUp } from "lucide-react";
 import { DashboardCumulativePlanFactChart, DashboardPlanFactChart } from "@/components/charts/dashboard-charts";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +14,10 @@ import {
   calculateDailyStats,
   calculateMonthStats,
   calculateTaskStats,
-  getCompletionStatus,
   getForecastStatus
 } from "@/lib/metrics";
+import { getMainFocusTask, getRiskTasks } from "@/lib/recommendations";
+import { calculateRhythmSnapshot, getRhythmMilestones } from "@/lib/rhythm";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { cn, formatPercent, formatScore } from "@/lib/utils";
 
@@ -48,18 +49,17 @@ export default async function DashboardPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { selectedMonth, plans, facts, tasks, categories, preferences } = result.data;
+  const { selectedMonth, plans, facts, tasks, categories, dailyNotes, preferences } = result.data;
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
   }
 
   const monthStats = calculateMonthStats(plans, facts, tasks);
-  const completionStatus = getCompletionStatus(monthStats.monthCompletion);
   const forecastStatus = getForecastStatus(monthStats.forecastPercent);
   const monthDates = getMonthDates(selectedMonth.year, selectedMonth.month);
   const dailyStats = monthDates.map((date) => {
@@ -73,10 +73,19 @@ export default async function DashboardPage({
     fact: stat.factScore
   }));
   const categoryStats = calculateCategoryStats(plans, facts, tasks);
-  const taskStats = calculateTaskStats(plans, facts, tasks)
-    .filter((task) => task.planScore > 0)
-    .sort((a, b) => b.gapScore - a.gapScore);
-  const focus = taskStats[0];
+  const taskStats = calculateTaskStats(plans, facts, tasks).filter((task) => task.planScore > 0);
+  const riskTasks = getRiskTasks(taskStats, 6, selectedMonth.target_percent);
+  const focus = getMainFocusTask(taskStats, selectedMonth.target_percent);
+  const rhythm = calculateRhythmSnapshot({
+    dailyStats,
+    dailyNotes: dailyNotes.filter((note) => note.month_id === selectedMonth.id),
+    targetPercent: selectedMonth.target_percent
+  });
+  const milestones = getRhythmMilestones({
+    rhythm,
+    forecastPercent: monthStats.forecastPercent,
+    targetPercent: selectedMonth.target_percent
+  });
   const yesterdayKey = shiftDateKey(getTodayKey(), -1);
   const yesterdayPlans = plans.filter((plan) => plan.date === yesterdayKey && plan.planned_score > 0);
   const yesterdayFactKeys = new Set(
@@ -100,9 +109,7 @@ export default async function DashboardPage({
           <p className="workspace-subtitle">{selectedMonth.title}. Картина месяца, темп и то, что важнее всего закрыть сегодня.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant={badgeVariantByLevel[completionStatus.level]}>
-            {completionStatus.label}
-          </Badge>
+          <Badge variant="outline">Общий факт {formatPercent(monthStats.monthCompletion)}</Badge>
           <Badge variant={badgeVariantByLevel[forecastStatus.level]}>
             {forecastStatus.label}
           </Badge>
@@ -123,12 +130,12 @@ export default async function DashboardPage({
           {focus ? (
             <>
               <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-                Задача с самым большим влиянием на результат месяца. Закройте ее прежде, чем расходовать внимание на мелочи.
+                Она отстает от требуемого темпа. Ориентир построен по плану, который уже должен был быть выполнен, а не по всему месяцу.
               </p>
               <div className="mt-7 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
                 <div>
-                  <div className="text-xs text-muted-foreground">Отставание</div>
-                  <div className="data-value mt-1 text-3xl">{formatScore(focus.gapScore)} балла</div>
+                  <div className="text-xs text-muted-foreground">Текущий темп</div>
+                  <div className="data-value mt-1 text-3xl">{formatPercent(focus.forecastPercent)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Минимум в день</div>
@@ -137,7 +144,7 @@ export default async function DashboardPage({
               </div>
             </>
           ) : (
-            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Сегодня нет задач с критическим отставанием. Сохраняйте текущий темп.</p>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Все начатые задачи идут в целевом темпе. Сохраняйте ритм без лишнего давления.</p>
           )}
         </div>
 
@@ -148,7 +155,7 @@ export default async function DashboardPage({
               <Target className="h-5 w-5 text-signal" strokeWidth={1.8} />
             </div>
             <div className="data-value mt-5 text-5xl">{formatPercent(monthStats.monthCompletion)}</div>
-            <div className="mt-3 text-sm text-muted-foreground">{formatScore(monthStats.totalFactScore)} из {formatScore(monthStats.totalPlanScore)} баллов</div>
+            <div className="mt-3 text-sm text-muted-foreground">{formatScore(monthStats.currentFactScore)} из {formatScore(monthStats.totalPlanScore)} баллов</div>
           </div>
           <div className="dashboard-readout-cell">
             <div className="flex items-center justify-between gap-3">
@@ -156,6 +163,7 @@ export default async function DashboardPage({
               <TrendingUp className="h-5 w-5 text-signal" strokeWidth={1.8} />
             </div>
             <div className="data-value mt-5 text-4xl">{formatPercent(monthStats.forecastPercent)}</div>
+            <div className="mt-2 text-sm text-muted-foreground">Цель темпа: {formatPercent(selectedMonth.target_percent)}</div>
             <Progress className="mt-4" value={Math.min(monthStats.forecastPercent, 1.2) * 100} />
           </div>
         </aside>
@@ -177,15 +185,63 @@ export default async function DashboardPage({
         <MetricCell
           icon={<Target className="h-5 w-5" />}
           label="Факт баллов"
-          value={formatScore(monthStats.totalFactScore)}
+          value={formatScore(monthStats.currentFactScore)}
           detail={`из ${formatScore(monthStats.totalPlanScore)} плана`}
         />
         <MetricCell
           icon={<TrendingUp className="h-5 w-5" />}
           label="Статус темпа"
           value={forecastStatus.level === "danger" ? "Риск" : forecastStatus.level === "warning" ? "Ускориться" : "В норме"}
-          detail={forecastStatus.label}
+          detail={`По плану на прошедшие дни: ${formatScore(monthStats.planScoreToDate)} баллов`}
         />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]" aria-label="Ритм и достижения">
+        <Card className="section-panel">
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle>Ритм и ресурс</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Самонаблюдение по энергии и регулярности, не медицинский показатель.</p>
+            </div>
+            <BatteryMedium className="h-5 w-5 text-signal" strokeWidth={1.8} />
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+            <div className="min-w-32 rounded-md bg-muted/55 p-4">
+              <div className="text-xs text-muted-foreground">Средняя энергия</div>
+              <div className="data-value mt-1 text-3xl">{rhythm.energyAverage === null ? "—" : `${rhythm.energyAverage}/5`}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{rhythm.energyEntries} отметок</div>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="font-semibold">{rhythm.label}</div>
+                <Badge variant={rhythm.consistencyPercent >= selectedMonth.target_percent ? "success" : "secondary"}>
+                  {rhythm.daysAtTarget} из {rhythm.plannedDays} дней в ритме
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{rhythm.guidance}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="section-panel">
+          <CardHeader>
+            <CardTitle>Знаки месяца</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Небольшие ориентиры за реальный прогресс, без штрафов.</p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {milestones.map((milestone) => (
+              <div key={milestone.id} className="flex items-center justify-between gap-3 rounded-md border border-border/75 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">{milestone.label}</div>
+                  <div className="text-xs text-muted-foreground">{milestone.detail}</div>
+                </div>
+                <Badge variant={milestone.unlocked ? "success" : "outline"}>
+                  {milestone.unlocked ? "получено" : "в пути"}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </section>
 
       <div className="grid gap-3 xl:grid-cols-2">
@@ -223,7 +279,8 @@ export default async function DashboardPage({
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {categoryStats.map((categoryStat) => {
           const category = categories.find((item) => item.id === categoryStat.categoryId);
-          const status = getCompletionStatus(categoryStat.completion);
+          const hasElapsedPlan = categoryStat.planScoreToDate > 0;
+          const status = hasElapsedPlan ? getForecastStatus(categoryStat.pacePercent) : { level: "info" as const };
 
           return (
             <div key={categoryStat.categoryId} className="list-row">
@@ -235,15 +292,17 @@ export default async function DashboardPage({
                   />
                   <span className="truncate">{category?.name ?? "Без категории"}</span>
                 </div>
-                <div className="data-value text-2xl">{formatPercent(categoryStat.completion)}</div>
+                <div className="data-value text-2xl">{hasElapsedPlan ? formatPercent(categoryStat.pacePercent) : "позже"}</div>
               </div>
               <div className="mt-4 space-y-2">
                 <Progress
-                  value={Math.min(categoryStat.completion, 1.2) * 100}
+                  value={hasElapsedPlan ? Math.min(categoryStat.pacePercent, 1.2) * 100 : 0}
                   indicatorClassName={cn(status.level === "over" && "bg-over", status.level === "warning" && "bg-warning", status.level === "danger" && "bg-destructive", status.level === "success" && "bg-success")}
                 />
                 <div className="text-sm text-muted-foreground">
-                  {formatScore(categoryStat.factScore)} / {formatScore(categoryStat.planScore)}
+                  {hasElapsedPlan
+                    ? `Темп по пройденному плану: ${formatScore(categoryStat.factScoreToDate)} / ${formatScore(categoryStat.planScoreToDate)}`
+                    : "План категории начинается позже"}
                 </div>
               </div>
             </div>
@@ -254,22 +313,26 @@ export default async function DashboardPage({
 
       <Card className="section-panel">
         <CardHeader>
-          <CardTitle>Задачи с наибольшим отставанием</CardTitle>
+          <CardTitle>Задачи, которым нужен темп</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {taskStats.slice(0, 6).map((task) => (
+          {riskTasks.length ? riskTasks.map((task) => (
             <div key={task.taskId} className="list-row grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <div className="font-medium">{task.title}</div>
                 <div className="text-sm text-muted-foreground">
-                  Факт {formatScore(task.factScore)} / план {formatScore(task.planScore)}
+                  Темп {formatPercent(task.forecastPercent)} · нужно {formatScore(task.requiredPerDay)} в день
                 </div>
               </div>
-              <Badge variant={task.gapScore > 0 ? "warning" : "success"}>
-                Отставание {formatScore(task.gapScore)}
+              <Badge variant="warning">
+                Ниже цели {formatPercent(selectedMonth.target_percent)}
               </Badge>
             </div>
-          ))}
+          )) : (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              Начатые задачи держат целевой темп. Будущие задачи здесь не считаются риском.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

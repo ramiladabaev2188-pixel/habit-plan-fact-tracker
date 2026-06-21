@@ -6,15 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
-import { getMonthDates, toDateKey } from "@/lib/dates/month";
+import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
 import {
   calculateCategoryStats,
   calculateDailyStats,
   calculateStreaks,
   calculateTaskStats,
-  getCompletionStatus,
   getForecastStatus
 } from "@/lib/metrics";
+import { getRiskTasks, getStrongTasks } from "@/lib/recommendations";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
 
@@ -42,7 +42,7 @@ export default async function AnalyticsPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
@@ -50,9 +50,11 @@ export default async function AnalyticsPage({
 
   const dates = getMonthDates(selectedMonth.year, selectedMonth.month);
   const dailyStats = dates.map((date) => calculateDailyStats(plans, facts, toDateKey(date), tasks));
-  const streaks = calculateStreaks(dailyStats);
-  const bestDay = [...dailyStats].filter((day) => day.planScore > 0).sort((a, b) => b.completion - a.completion)[0];
-  const worstDay = [...dailyStats].filter((day) => day.planScore > 0).sort((a, b) => a.completion - b.completion)[0];
+  const today = getTodayKey();
+  const completedDailyStats = dailyStats.filter((day) => day.planScore > 0 && day.date <= today);
+  const streaks = calculateStreaks(dailyStats, today);
+  const bestDay = [...completedDailyStats].sort((a, b) => b.completion - a.completion)[0];
+  const worstDay = [...completedDailyStats].sort((a, b) => a.completion - b.completion)[0];
   const categoryStats = calculateCategoryStats(plans, facts, tasks);
   const taskStats = calculateTaskStats(plans, facts, tasks).filter((task) => task.planScore > 0);
   const categoryChartData = categoryStats.map((stat) => {
@@ -64,11 +66,11 @@ export default async function AnalyticsPage({
       percent: stat.completion
     };
   });
-  const riskTasks = [...taskStats].sort((a, b) => a.completion - b.completion).slice(0, 5);
-  const overTasks = [...taskStats].filter((task) => task.completion >= 1).sort((a, b) => b.completion - a.completion).slice(0, 5);
+  const riskTasks = getRiskTasks(taskStats, 5, selectedMonth.target_percent);
+  const overTasks = getStrongTasks(taskStats, 5, 1);
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">Аналитика</h1>
         <p className="text-sm text-muted-foreground">{selectedMonth.title}</p>
@@ -96,9 +98,9 @@ export default async function AnalyticsPage({
               <CardTitle>Топ риска</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {riskTasks.map((task) => (
-                <TaskLine key={task.taskId} title={task.title} value={formatPercent(task.completion)} variant="warning" />
-              ))}
+              {riskTasks.length ? riskTasks.map((task) => (
+                <TaskLine key={task.taskId} title={task.title} value={`Темп ${formatPercent(task.forecastPercent)}`} variant="warning" />
+              )) : <p className="text-sm text-muted-foreground">У начатых задач нет рисков по темпу.</p>}
             </CardContent>
           </Card>
           <Card>
@@ -141,7 +143,6 @@ export default async function AnalyticsPage({
               <tbody>
                 {taskStats.map((task) => {
                   const category = categories.find((item) => item.id === task.categoryId);
-                  const completionStatus = getCompletionStatus(task.completion);
                   const forecastStatus = getForecastStatus(task.forecastPercent);
 
                   return (
@@ -156,9 +157,6 @@ export default async function AnalyticsPage({
                       <td className="p-3 text-right">{formatScore(task.requiredPerDay)}</td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant={completionStatus.level === "danger" ? "destructive" : completionStatus.level}>
-                            {completionStatus.label}
-                          </Badge>
                           <Badge variant={forecastStatus.level === "danger" ? "destructive" : forecastStatus.level}>
                             {forecastStatus.label}
                           </Badge>

@@ -47,7 +47,7 @@ export default async function TeamInvitePage({
 
   if (existingMember?.status === "active") {
     return (
-      <div className="mx-auto max-w-xl space-y-5 pt-10 md:pl-64">
+      <div className="mx-auto max-w-xl space-y-5 pt-10">
         <Card>
           <CardHeader>
             <CardTitle>Вы уже в команде</CardTitle>
@@ -74,7 +74,7 @@ export default async function TeamInvitePage({
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-5 pt-10 md:pl-64">
+    <div className="mx-auto max-w-xl space-y-5 pt-10">
       <Card>
         <CardHeader>
           <CardTitle>Приглашение в команду</CardTitle>

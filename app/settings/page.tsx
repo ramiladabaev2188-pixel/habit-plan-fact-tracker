@@ -42,7 +42,7 @@ export default async function SettingsPage({
   const { profile, selectedMonth, categories, preferences } = result.data;
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">Настройки</h1>
         <p className="text-sm text-muted-foreground">Профиль, цель месяца, категории и экспорт.</p>
@@ -67,7 +67,7 @@ export default async function SettingsPage({
                 <Input id="timezone" name="timezone" defaultValue={profile?.timezone ?? "Asia/Yekaterinburg"} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="targetPercent">Цель месяца</Label>
+                <Label htmlFor="targetPercent">Целевой темп месяца</Label>
                 <Input
                   id="targetPercent"
                   name="targetPercent"
@@ -77,6 +77,7 @@ export default async function SettingsPage({
                   max="2"
                   defaultValue={selectedMonth?.target_percent ?? 0.8}
                 />
+                <p className="text-xs text-muted-foreground">Введите 0.8 для 80%, 0.9 для 90%.</p>
               </div>
               <Button type="submit">Сохранить настройки</Button>
             </form>

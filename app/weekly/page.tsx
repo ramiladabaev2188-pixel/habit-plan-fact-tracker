@@ -35,7 +35,7 @@ export default async function WeeklyPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
@@ -44,7 +44,7 @@ export default async function WeeklyPage({
   const weeklyReport = calculateWeeklyReport(selectedMonth, plans, facts, tasks);
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">Недельный отчет</h1>
@@ -77,17 +77,19 @@ export default async function WeeklyPage({
                       {week.startDate.slice(-2)}–{week.endDate.slice(-2)} число
                     </p>
                   </div>
-                  <Badge variant={week.completion >= 1 ? "over" : week.completion >= 0.8 ? "success" : week.completion >= 0.6 ? "warning" : week.planScore > 0 ? "destructive" : "outline"}>
+                  <Badge variant={week.timeState === "future" ? "outline" : week.pacePercent >= 1 ? "over" : week.pacePercent >= 0.8 ? "success" : week.pacePercent >= 0.6 ? "warning" : week.planScore > 0 ? "destructive" : "outline"}>
                     {week.status}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr]">
                 <div className="space-y-3 rounded-md border p-4">
-                  <div className="text-sm text-muted-foreground">Итог недели</div>
-                  <div className="text-3xl font-semibold">{formatPercent(week.completion)}</div>
+                  <div className="text-sm text-muted-foreground">{week.timeState === "past" ? "Итог недели" : "Темп недели"}</div>
+                  <div className="text-3xl font-semibold">{week.timeState === "future" ? "—" : formatPercent(week.pacePercent)}</div>
                   <div className="text-sm text-muted-foreground">
-                    {formatScore(week.factScore)} / {formatScore(week.planScore)} баллов
+                    {week.timeState === "past"
+                      ? `${formatScore(week.factScore)} / ${formatScore(week.planScore)} баллов`
+                      : `${formatScore(week.factScore)} / ${formatScore(week.planScoreToDate)} баллов по пройденному плану`}
                   </div>
                   <p className="text-sm">{week.comment}</p>
                 </div>

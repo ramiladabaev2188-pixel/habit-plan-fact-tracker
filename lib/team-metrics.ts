@@ -1,4 +1,5 @@
 import { calculateMonthStats, calculateTaskStats } from "@/lib/metrics";
+import { getRiskTasks } from "@/lib/recommendations";
 import type { DailyFact, DailyPlan, Month, Task } from "@/types/domain";
 import type { TeamMemberProfile } from "@/lib/supabase/team-data";
 
@@ -24,6 +25,7 @@ export type TeamMemberStats = {
   riskTasks: Array<{
     title: string;
     completion: number;
+    forecastPercent: number;
     gapScore: number;
     requiredPerDay: number;
   }>;
@@ -44,6 +46,7 @@ export type TeamStats = {
     memberName: string;
     title: string;
     completion: number;
+    forecastPercent: number;
     gapScore: number;
     requiredPerDay: number;
   }>;
@@ -52,13 +55,14 @@ export type TeamStats = {
 export function calculateTeamStats(snapshots: TeamMemberSnapshot[], today?: string): TeamStats {
   const memberStats = snapshots.map((snapshot) => {
     const stats = calculateMonthStats(snapshot.plans, snapshot.facts, snapshot.tasks, today);
-    const taskStats = calculateTaskStats(snapshot.plans, snapshot.facts, snapshot.tasks, today)
-      .filter((task) => task.planScore > 0)
-      .sort((a, b) => b.gapScore - a.gapScore)
-      .slice(0, 3)
+    const taskStats = getRiskTasks(
+      calculateTaskStats(snapshot.plans, snapshot.facts, snapshot.tasks, today),
+      3
+    )
       .map((task) => ({
         title: task.title,
         completion: task.completion,
+        forecastPercent: task.forecastPercent,
         gapScore: task.gapScore,
         requiredPerDay: task.requiredPerDay
       }));
@@ -89,13 +93,16 @@ export function calculateTeamStats(snapshots: TeamMemberSnapshot[], today?: stri
         memberName: member.name
       }))
     )
-    .sort((a, b) => b.gapScore - a.gapScore)
+    .sort((a, b) => a.forecastPercent - b.forecastPercent || b.requiredPerDay - a.requiredPerDay)
     .slice(0, 8);
 
   const focusMember =
     [...memberStats]
-      .filter((member) => member.planScore > 0)
-      .sort((a, b) => b.requiredPerDay - a.requiredPerDay)[0] ?? null;
+      .filter((member) => member.planScore > 0 && member.forecastPercent < 0.8)
+      .sort(
+        (a, b) =>
+          a.forecastPercent - b.forecastPercent || b.requiredPerDay - a.requiredPerDay
+      )[0] ?? null;
 
   return {
     planScore,

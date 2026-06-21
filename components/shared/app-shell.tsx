@@ -17,7 +17,6 @@ import {
   Presentation,
   Settings,
   ShieldCheck,
-  Smartphone,
   Users,
   X
 } from "lucide-react";
@@ -31,7 +30,6 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/daily", label: "День", icon: ListChecks },
-  { href: "/mobile", label: "Телефон", icon: Smartphone },
   { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/planner", label: "План", icon: ClipboardList },
   { href: "/analytics", label: "Аналитика", icon: LineChart },

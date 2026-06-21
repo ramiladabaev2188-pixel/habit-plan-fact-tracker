@@ -65,7 +65,7 @@ export default async function NotesPage({
   const pagedNotes = filteredNotes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">Заметки</h1>
         <p className="text-sm text-muted-foreground">Разбор дней, недель, месяцев, задач и целей.</p>
@@ -181,36 +181,41 @@ export default async function NotesPage({
                       <Badge key={tag} variant="outline">{tag}</Badge>
                     ))}
                   </div>
-                  <form action={upsertNoteAction} className="space-y-3 rounded-md border p-3">
-                    <input type="hidden" name="id" value={note.id} />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Input name="title" defaultValue={note.title ?? ""} placeholder="Заголовок" />
-                      <Input name="date" type="date" defaultValue={note.date ?? ""} />
-                    </div>
-                    <Textarea name="content" defaultValue={note.content} className="min-h-28" required />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Select name="monthId" defaultValue={note.month_id ?? ""}>
-                        <option value="">Без месяца</option>
-                        {months.map((item) => (
-                          <option key={item.id} value={item.id}>{item.title}</option>
-                        ))}
-                      </Select>
-                      <Select name="taskId" defaultValue={note.task_id ?? ""}>
-                        <option value="">Без задачи</option>
-                        {tasks.map((item) => (
-                          <option key={item.id} value={item.id}>{item.title}</option>
-                        ))}
-                      </Select>
-                      <Select name="goalId" defaultValue={note.goal_id ?? ""}>
-                        <option value="">Без цели</option>
-                        {goals.map((item) => (
-                          <option key={item.id} value={item.id}>{item.title}</option>
-                        ))}
-                      </Select>
-                      <Input name="tags" defaultValue={note.tags.join(", ")} placeholder="Теги через запятую" />
-                    </div>
-                    <Button type="submit" size="sm">Сохранить</Button>
-                  </form>
+                  <details className="rounded-md border border-border/80">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+                      Редактировать заметку
+                    </summary>
+                    <form action={upsertNoteAction} className="space-y-3 border-t border-border/80 p-3">
+                      <input type="hidden" name="id" value={note.id} />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Input name="title" defaultValue={note.title ?? ""} placeholder="Заголовок" />
+                        <Input name="date" type="date" defaultValue={note.date ?? ""} />
+                      </div>
+                      <Textarea name="content" defaultValue={note.content} className="min-h-28" required />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Select name="monthId" defaultValue={note.month_id ?? ""}>
+                          <option value="">Без месяца</option>
+                          {months.map((item) => (
+                            <option key={item.id} value={item.id}>{item.title}</option>
+                          ))}
+                        </Select>
+                        <Select name="taskId" defaultValue={note.task_id ?? ""}>
+                          <option value="">Без задачи</option>
+                          {tasks.map((item) => (
+                            <option key={item.id} value={item.id}>{item.title}</option>
+                          ))}
+                        </Select>
+                        <Select name="goalId" defaultValue={note.goal_id ?? ""}>
+                          <option value="">Без цели</option>
+                          {goals.map((item) => (
+                            <option key={item.id} value={item.id}>{item.title}</option>
+                          ))}
+                        </Select>
+                        <Input name="tags" defaultValue={note.tags.join(", ")} placeholder="Теги через запятую" />
+                      </div>
+                      <Button type="submit" size="sm">Сохранить</Button>
+                    </form>
+                  </details>
                   <form action={deleteNoteAction}>
                     <input type="hidden" name="noteId" value={note.id} />
                     <ConfirmSubmitButton

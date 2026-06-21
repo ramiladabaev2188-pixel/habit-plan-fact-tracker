@@ -168,7 +168,7 @@ export function DailyInput({
 
   const closePlannedAsDone = useCallback(() => {
     items.forEach((item, index) => {
-      setFactValue(index, item.task.id, 1);
+      setFactValue(index, item.task.id, Math.min(2, Math.max(0, item.plan.planned_value)));
     });
   }, [items, setFactValue]);
 
@@ -263,7 +263,7 @@ export function DailyInput({
         <CardContent className="grid gap-2 sm:grid-cols-3">
           <Button type="button" variant="success" disabled={readOnly} onClick={closePlannedAsDone}>
             <ClipboardCheck className="h-4 w-4" />
-            Закрыть план как 1
+            Заполнить по плану
           </Button>
           <Button type="button" variant="outline" disabled={readOnly || !hasUnfilled} onClick={markUnfilledAsZero}>
             0 для пустых
@@ -334,6 +334,7 @@ export function DailyInput({
                             current === value && "scale-[1.02] shadow-[0_10px_20px_-16px_hsl(var(--primary))]"
                           )}
                           disabled={readOnly}
+                          aria-pressed={current === value}
                           onClick={() => setFactValue(index, item.task.id, value)}
                         >
                           {value}

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   calculateCompletion,
   calculateForecast,
+  calculateMonthStats,
+  calculatePaceForecast,
   calculateRequiredPerDay,
   calculateScore,
   calculateStreaks,
+  calculateTaskStats,
   calculateWeeklyReport,
   getCompletionStatus,
   getForecastStatus
@@ -34,6 +37,44 @@ describe("metrics", () => {
       forecastScore: 60,
       forecastPercent: 0.5
     });
+  });
+
+  it("forecasts by work that was planned up to today, not by calendar days", () => {
+    expect(calculatePaceForecast(8, 10, 40)).toEqual({
+      forecastScore: 32,
+      forecastPercent: 0.8
+    });
+
+    const stats = calculateMonthStats(
+      [
+        { task_id: "task-1", date: "2026-06-01", planned_value: 1 },
+        { task_id: "task-1", date: "2026-06-10", planned_value: 3 }
+      ],
+      [{ task_id: "task-1", date: "2026-06-01", actual_value: 0.8 }],
+      [{ id: "task-1", title: "Спина", weight: 10 }],
+      "2026-06-01"
+    );
+
+    expect(stats.planScoreToDate).toBe(10);
+    expect(stats.forecastPercent).toBe(0.8);
+  });
+
+  it("does not mark a task planned only for later as a current risk", () => {
+    const stats = calculateTaskStats(
+      [
+        { task_id: "today", date: "2026-06-01", planned_value: 1 },
+        { task_id: "later", date: "2026-06-10", planned_value: 1 }
+      ],
+      [{ task_id: "today", date: "2026-06-01", actual_value: 0.5 }],
+      [
+        { id: "today", title: "Сегодня", weight: 1 },
+        { id: "later", title: "Позже", weight: 1 }
+      ],
+      "2026-06-01"
+    );
+
+    expect(stats.find((task) => task.taskId === "today")?.forecastPercent).toBe(0.5);
+    expect(stats.find((task) => task.taskId === "later")?.hasElapsedPlan).toBe(false);
   });
 
   it("calculates required score per remaining day", () => {
@@ -70,6 +111,19 @@ describe("metrics", () => {
       best80: 2,
       best90: 2
     });
+  });
+
+  it("does not let future planned days reset the current streak", () => {
+    const result = calculateStreaks(
+      [
+        { date: "2026-06-01", planScore: 10, factScore: 10, completion: 1 },
+        { date: "2026-06-02", planScore: 10, factScore: 9, completion: 0.9 },
+        { date: "2026-06-03", planScore: 10, factScore: 0, completion: 0 }
+      ],
+      "2026-06-02"
+    );
+
+    expect(result.current80).toBe(2);
   });
 
   it("calculates weekly report by fixed day ranges", () => {
@@ -113,6 +167,13 @@ describe("metrics", () => {
           factScore: 10,
           completion: 0.33,
           gapScore: 20,
+          factScoreToDate: 10,
+          planScoreToDate: 30,
+          futurePlanScore: 0,
+          hasElapsedPlan: true,
+          pacePercent: 0.5,
+          baselinePerDay: 3,
+          pressureRatio: 1.67,
           requiredPerDay: 5,
           forecastScore: 15,
           forecastPercent: 0.5
@@ -129,7 +190,6 @@ describe("metrics", () => {
       ]
     });
 
-    expect(insights).toContain("Текущий факт ниже правила 80% — фокус на закрытии плановых дней.");
     expect(insights).toContain("Прогноз ниже цели — нужно усилить задачи с большим весом.");
     expect(insights).toContain("Категория Тело проседает сильнее всего.");
   });

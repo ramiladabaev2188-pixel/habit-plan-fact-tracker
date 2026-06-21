@@ -8,7 +8,6 @@ import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import {
   calculateCategoryStats,
-  calculateCompletion,
   calculateDailyStats,
   calculateMonthStats,
   calculateStreaks,
@@ -21,7 +20,7 @@ import {
   getRiskTasks,
   getStrongTasks
 } from "@/lib/recommendations";
-import { getMonthDates, toDateKey } from "@/lib/dates/month";
+import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
 
@@ -49,7 +48,7 @@ export default async function MonthlyReportPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
@@ -58,10 +57,11 @@ export default async function MonthlyReportPage({
   const monthStats = calculateMonthStats(plans, facts, tasks);
   const taskStats = calculateTaskStats(plans, facts, tasks).filter((task) => task.planScore > 0);
   const monthDates = getMonthDates(selectedMonth.year, selectedMonth.month);
+  const today = getTodayKey();
   const dailyStats = monthDates.map((date) => calculateDailyStats(plans, facts, toDateKey(date), tasks));
-  const zeroFactDays = dailyStats.filter((day) => day.planScore > 0 && day.factScore === 0);
-  const weeklyReport = calculateWeeklyReport(selectedMonth, plans, facts, tasks);
-  const rawCategoryStats = calculateCategoryStats(plans, facts, tasks);
+  const zeroFactDays = dailyStats.filter((day) => day.date <= today && day.planScore > 0 && day.factScore === 0);
+  const weeklyReport = calculateWeeklyReport(selectedMonth, plans, facts, tasks, today);
+  const rawCategoryStats = calculateCategoryStats(plans, facts, tasks, today);
   const categoryStats = rawCategoryStats.map((category) => {
     const categoryInfo = categories.find((item) => item.id === category.categoryId);
     const categoryTaskIds = new Set(
@@ -86,17 +86,15 @@ export default async function MonthlyReportPage({
       completion: category.completion,
       planScore: category.planScore,
       factScore: category.factScore,
-      forecastPercent: calculateCompletion(
-        categoryTaskStats.reduce((sum, task) => sum + task.forecastScore, 0),
-        category.planScore
-      ),
+      forecastPercent: category.forecastPercent,
       requiredPerDay: categoryTaskStats.reduce((sum, task) => sum + task.requiredPerDay, 0),
-      streak: calculateStreaks(categoryDailyStats).current80
+      streak: calculateStreaks(categoryDailyStats, today).current80
     };
   });
   const insights = generateMonthlyInsights({
     monthCompletion: monthStats.monthCompletion,
     forecastPercent: monthStats.forecastPercent,
+    targetPercent: selectedMonth.target_percent,
     taskStats,
     categoryStats,
     zeroFactDays
@@ -104,6 +102,7 @@ export default async function MonthlyReportPage({
   const nextActions = getNextActions({
     monthCompletion: monthStats.monthCompletion,
     forecastPercent: monthStats.forecastPercent,
+    targetPercent: selectedMonth.target_percent,
     taskStats,
     categoryStats,
     zeroFactDays
@@ -112,7 +111,7 @@ export default async function MonthlyReportPage({
   const weakTasks = getRiskTasks(taskStats, 5);
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-normal">Отчет месяца</h1>

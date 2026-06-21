@@ -39,7 +39,7 @@ export default async function DailyPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );

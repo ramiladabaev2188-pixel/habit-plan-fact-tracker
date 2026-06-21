@@ -37,7 +37,7 @@ export default async function ChecksPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
@@ -53,7 +53,7 @@ export default async function ChecksPage({
   const warningCount = checks.filter((check) => check.status === "warning").length;
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">Проверки данных</h1>

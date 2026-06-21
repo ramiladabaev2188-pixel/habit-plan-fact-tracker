@@ -31,6 +31,8 @@ export type MetricMonth = {
   month: number;
 };
 
+import { getTodayKey } from "@/lib/dates/month";
+
 export type DailyStat = {
   date: string;
   planScore: number;
@@ -48,6 +50,9 @@ export type WeeklyReport = {
   planScore: number;
   factScore: number;
   completion: number;
+  pacePercent: number;
+  planScoreToDate: number;
+  timeState: "past" | "current" | "future";
   status: string;
   comment: string;
   weakTasks: TaskStat[];
@@ -95,6 +100,31 @@ export function calculateForecast(
   };
 }
 
+/**
+ * Forecast based on the amount of work that was actually planned up to today.
+ * Unlike a calendar-day average, this stays fair when different days have
+ * different workloads.
+ */
+export function calculatePaceForecast(
+  currentFactScore: number,
+  planScoreToDate: number,
+  totalPlanScore: number
+) {
+  if (planScoreToDate <= 0 || totalPlanScore <= 0) {
+    return {
+      forecastScore: 0,
+      forecastPercent: 0
+    };
+  }
+
+  const pacePercent = calculateCompletion(currentFactScore, planScoreToDate);
+
+  return {
+    forecastScore: roundMetric(pacePercent * totalPlanScore),
+    forecastPercent: pacePercent
+  };
+}
+
 export function calculateRequiredPerDay(
   totalPlanScore: number,
   currentFactScore: number,
@@ -135,7 +165,7 @@ export function calculateMonthStats(
   plans: MetricPlan[],
   facts: MetricFact[],
   tasks: MetricTask[],
-  today = new Date().toISOString().slice(0, 10)
+  today = getTodayKey()
 ) {
   const taskMap = createTaskMap(tasks);
   const totalPlanScore = sumScores(plans, (plan) => getPlanScore(plan, taskMap));
@@ -147,10 +177,13 @@ export function calculateMonthStats(
     facts.filter((fact) => fact.date <= today),
     (fact) => getFactScore(fact, taskMap)
   );
-  const forecast = calculateForecast(
+  const planScoreToDate = sumScores(
+    plans.filter((plan) => plan.date <= today),
+    (plan) => getPlanScore(plan, taskMap)
+  );
+  const forecast = calculatePaceForecast(
     currentFactScore,
-    elapsedDays,
-    plannedDates.length,
+    planScoreToDate,
     totalPlanScore
   );
 
@@ -158,7 +191,9 @@ export function calculateMonthStats(
     totalPlanScore,
     totalFactScore,
     currentFactScore,
-    monthCompletion: calculateCompletion(totalFactScore, totalPlanScore),
+    planScoreToDate,
+    pacePercent: forecast.forecastPercent,
+    monthCompletion: calculateCompletion(currentFactScore, totalPlanScore),
     elapsedDaysWithPlan: elapsedDays,
     remainingDays,
     totalPlannedDays: plannedDates.length,
@@ -174,7 +209,8 @@ export function calculateMonthStats(
 export function calculateCategoryStats(
   plans: MetricPlan[],
   facts: MetricFact[],
-  tasks: MetricTask[]
+  tasks: MetricTask[],
+  today = getTodayKey()
 ) {
   const taskMap = createTaskMap(tasks);
   const categoryIds = Array.from(
@@ -191,12 +227,25 @@ export function calculateCategoryStats(
     const categoryFacts = facts.filter((fact) => taskIds.has(getFactTaskId(fact)));
     const planScore = sumScores(categoryPlans, (plan) => getPlanScore(plan, taskMap));
     const factScore = sumScores(categoryFacts, (fact) => getFactScore(fact, taskMap));
+    const planScoreToDate = sumScores(
+      categoryPlans.filter((plan) => plan.date <= today),
+      (plan) => getPlanScore(plan, taskMap)
+    );
+    const factScoreToDate = sumScores(
+      categoryFacts.filter((fact) => fact.date <= today),
+      (fact) => getFactScore(fact, taskMap)
+    );
+    const forecast = calculatePaceForecast(factScoreToDate, planScoreToDate, planScore);
 
     return {
       categoryId,
       planScore,
       factScore,
-      completion: calculateCompletion(factScore, planScore)
+      completion: calculateCompletion(factScore, planScore),
+      planScoreToDate,
+      factScoreToDate,
+      pacePercent: forecast.forecastPercent,
+      ...forecast
     };
   });
 }
@@ -205,7 +254,7 @@ export function calculateTaskStats(
   plans: MetricPlan[],
   facts: MetricFact[],
   tasks: MetricTask[],
-  today = new Date().toISOString().slice(0, 10)
+  today = getTodayKey()
 ) {
   const taskMap = createTaskMap(tasks);
 
@@ -215,18 +264,32 @@ export function calculateTaskStats(
     const planScore = sumScores(taskPlans, (plan) => getPlanScore(plan, taskMap));
     const factScore = sumScores(taskFacts, (fact) => getFactScore(fact, taskMap));
     const plannedDates = getUniquePlanDates(taskPlans, taskMap);
-    const elapsedDays = plannedDates.filter((date) => date <= today).length;
     const remainingDays = plannedDates.filter((date) => date > today).length;
     const currentFactScore = sumScores(
       taskFacts.filter((fact) => fact.date <= today),
       (fact) => getFactScore(fact, taskMap)
     );
-    const forecast = calculateForecast(
+    const planScoreToDate = sumScores(
+      taskPlans.filter((plan) => plan.date <= today),
+      (plan) => getPlanScore(plan, taskMap)
+    );
+    const futurePlanScore = sumScores(
+      taskPlans.filter((plan) => plan.date > today),
+      (plan) => getPlanScore(plan, taskMap)
+    );
+    const forecast = calculatePaceForecast(
       currentFactScore,
-      elapsedDays,
-      plannedDates.length,
+      planScoreToDate,
       planScore
     );
+    const requiredPerDay = calculateRequiredPerDay(planScore, currentFactScore, remainingDays);
+    const baselinePerDay = remainingDays > 0 ? roundMetric(futurePlanScore / remainingDays) : 0;
+    const pressureRatio =
+      baselinePerDay > 0
+        ? roundMetric(requiredPerDay / baselinePerDay)
+        : requiredPerDay > 0
+          ? 99
+          : 0;
 
     return {
       taskId: task.id,
@@ -237,7 +300,14 @@ export function calculateTaskStats(
       factScore,
       completion: calculateCompletion(factScore, planScore),
       gapScore: roundMetric(Math.max(0, planScore - factScore)),
-      requiredPerDay: calculateRequiredPerDay(planScore, currentFactScore, remainingDays),
+      factScoreToDate: currentFactScore,
+      planScoreToDate,
+      futurePlanScore,
+      hasElapsedPlan: planScoreToDate > 0,
+      pacePercent: forecast.forecastPercent,
+      baselinePerDay,
+      pressureRatio,
+      requiredPerDay,
       ...forecast
     };
   });
@@ -247,7 +317,8 @@ export function calculateWeeklyReport(
   month: MetricMonth,
   plans: MetricPlan[],
   facts: MetricFact[],
-  tasks: MetricTask[]
+  tasks: MetricTask[],
+  today = getTodayKey()
 ): WeeklyReport[] {
   const weeks = getMonthWeekRanges(month.year, month.month);
   const taskMap = createTaskMap(tasks);
@@ -259,8 +330,25 @@ export function calculateWeeklyReport(
     const planScore = sumScores(weekPlans, (plan) => getPlanScore(plan, taskMap));
     const factScore = sumScores(weekFacts, (fact) => getFactScore(fact, taskMap));
     const completion = calculateCompletion(factScore, planScore);
-    const taskStats = calculateTaskStats(weekPlans, weekFacts, tasks, week[week.length - 1])
-      .filter((task) => task.planScore > 0);
+    const planScoreToDate = sumScores(
+      weekPlans.filter((plan) => plan.date <= today),
+      (plan) => getPlanScore(plan, taskMap)
+    );
+    const factScoreToDate = sumScores(
+      weekFacts.filter((fact) => fact.date <= today),
+      (fact) => getFactScore(fact, taskMap)
+    );
+    const timeState = week[week.length - 1] < today ? "past" : week[0] > today ? "future" : "current";
+    const pacePercent = calculateCompletion(factScoreToDate, planScoreToDate);
+    const taskStats =
+      timeState === "future"
+        ? []
+        : calculateTaskStats(
+            weekPlans,
+            weekFacts,
+            tasks,
+            timeState === "past" ? week[week.length - 1] : today
+          ).filter((task) => task.planScore > 0);
 
     return {
       weekNumber: index + 1,
@@ -270,14 +358,18 @@ export function calculateWeeklyReport(
       planScore,
       factScore,
       completion,
-      status: getWeeklyStatus(completion, planScore),
-      comment: getWeeklyComment(completion, planScore),
+      pacePercent,
+      planScoreToDate,
+      timeState,
+      status: getWeeklyStatus(timeState === "future" ? 0 : pacePercent, planScoreToDate, timeState),
+      comment: getWeeklyComment(timeState === "future" ? 0 : pacePercent, planScoreToDate, timeState),
       weakTasks: [...taskStats]
-        .sort((a, b) => b.gapScore - a.gapScore)
+        .filter((task) => task.hasElapsedPlan && task.forecastPercent < 0.8)
+        .sort((a, b) => b.pressureRatio - a.pressureRatio || a.forecastPercent - b.forecastPercent)
         .slice(0, 3),
       strongTasks: [...taskStats]
-        .filter((task) => task.completion >= 0.8)
-        .sort((a, b) => b.completion - a.completion)
+        .filter((task) => task.hasElapsedPlan && task.forecastPercent >= 0.8)
+        .sort((a, b) => b.forecastPercent - a.forecastPercent)
         .slice(0, 3)
     };
   });
@@ -311,9 +403,9 @@ export function getForecastStatus(percent: number): CompletionStatus {
   return { label: "⚠️ Риск", level: "warning" };
 }
 
-export function calculateStreaks(dailyStats: DailyStat[]) {
+export function calculateStreaks(dailyStats: DailyStat[], today = getTodayKey()) {
   const sorted = [...dailyStats]
-    .filter((stat) => stat.planScore > 0)
+    .filter((stat) => stat.planScore > 0 && stat.date <= today)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return {
@@ -426,7 +518,15 @@ function toMetricDateKey(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function getWeeklyStatus(completion: number, planScore: number) {
+function getWeeklyStatus(
+  completion: number,
+  planScore: number,
+  timeState: WeeklyReport["timeState"]
+) {
+  if (timeState === "future") {
+    return "◌ впереди";
+  }
+
   if (planScore <= 0) {
     return "— нет плана";
   }
@@ -446,7 +546,15 @@ function getWeeklyStatus(completion: number, planScore: number) {
   return "🔴 провал";
 }
 
-function getWeeklyComment(completion: number, planScore: number) {
+function getWeeklyComment(
+  completion: number,
+  planScore: number,
+  timeState: WeeklyReport["timeState"]
+) {
+  if (timeState === "future") {
+    return "Неделя еще не началась: план уже есть, а результат появится по мере выполнения.";
+  }
+
   if (planScore <= 0) {
     return "На этой неделе не было запланированных задач.";
   }

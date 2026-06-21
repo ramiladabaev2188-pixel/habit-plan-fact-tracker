@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
-import { getMonthDates, toDateKey } from "@/lib/dates/month";
+import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
 import { calculateDailyStats } from "@/lib/metrics";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { cn, formatPercent, formatScore } from "@/lib/utils";
@@ -38,7 +38,7 @@ export default async function CalendarPage({
 
   if (!selectedMonth) {
     return (
-      <div className="md:pl-64">
+      <div>
         <EmptyMonthState />
       </div>
     );
@@ -54,9 +54,10 @@ export default async function CalendarPage({
   const filteredFacts = facts.filter((fact) => allowedTaskIds.has(fact.task_id));
   const dates = getMonthDates(selectedMonth.year, selectedMonth.month);
   const firstOffset = (dates[0].getDay() + 6) % 7;
+  const today = getTodayKey();
 
   return (
-    <div className="space-y-5 md:pl-64">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">Календарь</h1>
@@ -105,7 +106,8 @@ export default async function CalendarPage({
             {dates.map((date) => {
               const key = toDateKey(date);
               const stat = calculateDailyStats(filteredPlans, filteredFacts, key, tasks);
-              const stateClass = getDayColor(stat.completion, stat.planScore);
+              const isFuture = key > today;
+              const stateClass = getDayColor(stat.completion, stat.planScore, isFuture);
 
               return (
                 <Link
@@ -118,7 +120,9 @@ export default async function CalendarPage({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-semibold">{date.getDate()}</span>
-                    <Badge variant="outline">{stat.planScore > 0 ? formatPercent(stat.completion) : "нет"}</Badge>
+                    <Badge variant="outline">
+                      {stat.planScore <= 0 ? "нет" : isFuture ? "план" : formatPercent(stat.completion)}
+                    </Badge>
                   </div>
                   <div className="mt-4 text-xs text-muted-foreground">
                     {formatScore(stat.factScore)} / {formatScore(stat.planScore)}
@@ -133,9 +137,13 @@ export default async function CalendarPage({
   );
 }
 
-function getDayColor(completion: number, planScore: number) {
+function getDayColor(completion: number, planScore: number, isFuture: boolean) {
   if (planScore <= 0) {
     return "bg-muted/40 text-muted-foreground";
+  }
+
+  if (isFuture) {
+    return "border-info/35 bg-info/10 text-muted-foreground";
   }
 
   if (completion >= 1) {

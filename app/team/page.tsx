@@ -151,11 +151,11 @@ export default async function TeamPage({
                 {formatScore(stats.factScore)} из {formatScore(stats.planScore)} баллов команды
               </div>
             </div>
-            <Badge variant={stats.completion >= 0.8 ? "success" : stats.completion >= 0.6 ? "warning" : "destructive"}>
-              {stats.completion >= 0.8 ? "Команда в темпе" : "Нужен общий рывок"}
+            <Badge variant={stats.forecastPercent >= 0.8 ? "success" : stats.forecastPercent >= 0.6 ? "warning" : "destructive"}>
+              {stats.forecastPercent >= 0.8 ? "Команда в темпе" : "Нужен общий рывок"}
             </Badge>
           </div>
-          <Progress className="mt-6" value={Math.min(stats.completion, 1.2) * 100} />
+          <Progress className="mt-6" value={Math.min(stats.forecastPercent, 1.2) * 100} />
         </div>
         <div className="team-scoreboard-side grid gap-4 sm:grid-cols-3 md:grid-cols-1">
           <div>
@@ -189,7 +189,7 @@ export default async function TeamPage({
         <Card className="section-panel">
           <CardHeader>
             <CardTitle>Участники</CardTitle>
-            <CardDescription>Команда видит вклад, общий прогресс и задачи в риске; редактировать чужие данные нельзя.</CardDescription>
+            <CardDescription>Команда видит вклад, темп и задачи, которые действительно не успевают к цели; редактировать чужие данные нельзя.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {stats.memberStats.map((member) => (
@@ -201,11 +201,11 @@ export default async function TeamPage({
                       {member.month ? member.month.title : "Нет месяца за выбранный период"}
                     </div>
                   </div>
-                  <Badge variant={member.completion >= 0.8 ? "success" : member.completion >= 0.6 ? "warning" : "destructive"}>
-                    {formatPercent(member.completion)}
+                  <Badge variant={member.forecastPercent >= 0.8 ? "success" : member.forecastPercent >= 0.6 ? "warning" : "destructive"}>
+                    Темп {formatPercent(member.forecastPercent)}
                   </Badge>
                 </div>
-                <Progress className="mt-3" value={member.completion * 100} />
+                <Progress className="mt-3" value={Math.min(member.forecastPercent, 1.2) * 100} />
                 <div className="mt-2 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
                   <span>Факт: {formatScore(member.factScore)}</span>
                   <span>План: {formatScore(member.planScore)}</span>
@@ -218,8 +218,8 @@ export default async function TeamPage({
 
         <Card className="section-panel">
           <CardHeader>
-            <CardTitle>Командные риски</CardTitle>
-            <CardDescription>Задачи с самым большим отставанием</CardDescription>
+            <CardTitle>Командные точки внимания</CardTitle>
+            <CardDescription>Только задачи, чей прогноз ниже целевого темпа.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {stats.riskTasks.length ? (
@@ -228,7 +228,7 @@ export default async function TeamPage({
                   <div className="text-sm font-semibold">{task.title}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{task.memberName}</div>
                   <div className="mt-2 flex items-center justify-between text-sm">
-                    <span>{formatPercent(task.completion)}</span>
+                    <span>Темп {formatPercent(task.forecastPercent)}</span>
                     <span>{formatScore(task.requiredPerDay)} в день</span>
                   </div>
                 </div>
