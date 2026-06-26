@@ -46,6 +46,14 @@ import {
   teamBoardTaskMoveSchema,
   teamBoardTaskSchema
 } from "@/lib/validators/tracker";
+import {
+  personalBoardCommentSchema,
+  personalBoardSchema,
+  personalBoardTaskArchiveSchema,
+  personalBoardTaskMoveSchema,
+  personalBoardTaskSchema,
+  personalBoardTaskUpdateSchema
+} from "@/lib/validators/personal-board";
 import type { PlanningRuleMode } from "@/types/domain";
 
 type DailyEntryInput = {
@@ -1280,6 +1288,228 @@ export async function addTeamChallengeCheckinAction(formData: FormData) {
   revalidatePath("/team");
 }
 
+const defaultPersonalBoardColumns = [
+  { title: "Входящие", color: "#64748b" },
+  { title: "В работе", color: "#3478d4" },
+  { title: "На паузе", color: "#d9822b" },
+  { title: "Готово", color: "#21835f" }
+];
+
+export async function createPersonalBoardAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardSchema.parse({
+    title: formData.get("title"),
+    description: formData.get("description")
+  });
+
+  const { count, error: countError } = await supabase
+    .from("personal_boards")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("is_archived", false);
+
+  if (countError) {
+    throw new Error(countError.message);
+  }
+
+  const { data: board, error: boardError } = await supabase
+    .from("personal_boards")
+    .insert({
+      user_id: userId,
+      title: parsed.title,
+      description: parsed.description || null,
+      is_default: (count ?? 0) === 0
+    })
+    .select("id")
+    .single();
+
+  if (boardError || !board) {
+    throw new Error(boardError?.message ?? "Не удалось создать личную доску");
+  }
+
+  const { error: columnsError } = await supabase.from("personal_board_columns").insert(
+    defaultPersonalBoardColumns.map((column, index) => ({
+      user_id: userId,
+      board_id: board.id,
+      title: column.title,
+      color: column.color,
+      sort_order: index
+    }))
+  );
+
+  if (columnsError) {
+    throw new Error(columnsError.message);
+  }
+
+  revalidatePath("/tasks");
+  redirect(`/tasks?board=${board.id}`);
+}
+
+export async function createPersonalBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardTaskSchema.parse({
+    boardId: formData.get("boardId"),
+    columnId: formData.get("columnId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    priority: formData.get("priority") || "medium",
+    dueDate: formData.get("dueDate"),
+    goalId: formData.get("goalId"),
+    habitTaskId: formData.get("habitTaskId"),
+    monthId: formData.get("monthId")
+  });
+
+  await requirePersonalBoardAccess(supabase, userId, parsed.boardId);
+  const column = await requirePersonalBoardColumn(supabase, userId, parsed.boardId, parsed.columnId);
+
+  const { error } = await supabase.from("personal_board_tasks").insert({
+    user_id: userId,
+    board_id: parsed.boardId,
+    column_id: parsed.columnId,
+    title: parsed.title,
+    description: parsed.description || null,
+    priority: parsed.priority,
+    due_date: parsed.dueDate ? dateKeySchema.parse(parsed.dueDate) : null,
+    goal_id: parsed.goalId || null,
+    habit_task_id: parsed.habitTaskId || null,
+    month_id: parsed.monthId || null,
+    sort_order: Date.now(),
+    completed_at: isDoneColumn(column.title) ? new Date().toISOString() : null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/tasks");
+}
+
+export async function updatePersonalBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardTaskUpdateSchema.parse({
+    boardId: formData.get("boardId"),
+    taskId: formData.get("taskId"),
+    columnId: formData.get("columnId"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+    priority: formData.get("priority") || "medium",
+    dueDate: formData.get("dueDate"),
+    goalId: formData.get("goalId"),
+    habitTaskId: formData.get("habitTaskId"),
+    monthId: formData.get("monthId")
+  });
+
+  await requirePersonalBoardAccess(supabase, userId, parsed.boardId);
+  const column = await requirePersonalBoardColumn(supabase, userId, parsed.boardId, parsed.columnId);
+
+  const { error } = await supabase
+    .from("personal_board_tasks")
+    .update({
+      column_id: parsed.columnId,
+      title: parsed.title,
+      description: parsed.description || null,
+      priority: parsed.priority,
+      due_date: parsed.dueDate ? dateKeySchema.parse(parsed.dueDate) : null,
+      goal_id: parsed.goalId || null,
+      habit_task_id: parsed.habitTaskId || null,
+      month_id: parsed.monthId || null,
+      completed_at: isDoneColumn(column.title) ? new Date().toISOString() : null
+    })
+    .eq("id", parsed.taskId)
+    .eq("board_id", parsed.boardId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/tasks");
+}
+
+export async function movePersonalBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardTaskMoveSchema.parse({
+    boardId: formData.get("boardId"),
+    taskId: formData.get("taskId"),
+    columnId: formData.get("columnId")
+  });
+
+  await requirePersonalBoardAccess(supabase, userId, parsed.boardId);
+  const column = await requirePersonalBoardColumn(supabase, userId, parsed.boardId, parsed.columnId);
+
+  const { error } = await supabase
+    .from("personal_board_tasks")
+    .update({
+      column_id: parsed.columnId,
+      sort_order: Date.now(),
+      completed_at: isDoneColumn(column.title) ? new Date().toISOString() : null
+    })
+    .eq("id", parsed.taskId)
+    .eq("board_id", parsed.boardId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/tasks");
+}
+
+export async function archivePersonalBoardTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardTaskArchiveSchema.parse({
+    boardId: formData.get("boardId"),
+    taskId: formData.get("taskId")
+  });
+
+  await requirePersonalBoardAccess(supabase, userId, parsed.boardId);
+
+  const { error } = await supabase
+    .from("personal_board_tasks")
+    .update({ is_archived: true })
+    .eq("id", parsed.taskId)
+    .eq("board_id", parsed.boardId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/tasks");
+}
+
+export async function addPersonalBoardCommentAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = personalBoardCommentSchema.parse({
+    taskId: formData.get("taskId"),
+    content: formData.get("content")
+  });
+
+  const { data: task, error: taskError } = await supabase
+    .from("personal_board_tasks")
+    .select("id")
+    .eq("id", parsed.taskId)
+    .eq("user_id", userId)
+    .eq("is_archived", false)
+    .maybeSingle();
+
+  if (taskError || !task) {
+    throw new Error(taskError?.message ?? "Личная задача не найдена");
+  }
+
+  const { error } = await supabase.from("personal_board_comments").insert({
+    user_id: userId,
+    task_id: parsed.taskId,
+    content: parsed.content
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/tasks");
+}
+
 const defaultTeamBoardColumns = [
   { title: "Идеи", color: "#64748b" },
   { title: "В работе", color: "#3478d4" },
@@ -1458,6 +1688,52 @@ export async function addTeamBoardCommentAction(formData: FormData) {
   }
 
   revalidatePath("/team/board");
+}
+
+async function requirePersonalBoardAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  boardId: string
+) {
+  const { data: board, error } = await supabase
+    .from("personal_boards")
+    .select("id")
+    .eq("id", boardId)
+    .eq("user_id", userId)
+    .eq("is_archived", false)
+    .maybeSingle();
+
+  if (error || !board) {
+    throw new Error(error?.message ?? "Личная доска не найдена");
+  }
+
+  return board;
+}
+
+async function requirePersonalBoardColumn(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  boardId: string,
+  columnId: string
+) {
+  const { data: column, error } = await supabase
+    .from("personal_board_columns")
+    .select("id, title")
+    .eq("id", columnId)
+    .eq("board_id", boardId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !column) {
+    throw new Error(error?.message ?? "Колонка не найдена на личной доске");
+  }
+
+  return column;
+}
+
+function isDoneColumn(title: string) {
+  const normalized = title.trim().toLowerCase();
+  return normalized === "готово" || normalized === "done";
 }
 
 async function requireTeamAdmin(

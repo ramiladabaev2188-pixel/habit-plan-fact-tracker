@@ -9,6 +9,7 @@ import {
   signUpSchema,
   teamBoardTaskSchema
 } from "@/lib/validators/tracker";
+import { personalBoardTaskSchema } from "@/lib/validators/personal-board";
 
 describe("validators", () => {
   it("accepts fact values in quarter steps only", () => {
@@ -75,5 +76,22 @@ describe("validators", () => {
     expect(teamBoardTaskSchema.safeParse(baseTask).success).toBe(true);
     expect(teamBoardTaskSchema.safeParse({ ...baseTask, priority: "critical" }).success).toBe(false);
     expect(teamBoardTaskSchema.safeParse({ ...baseTask, title: " " }).success).toBe(false);
+  });
+
+  it("validates a personal board task before it reaches the database", () => {
+    const baseTask = {
+      boardId: "00000000-0000-0000-0000-000000000001",
+      columnId: "00000000-0000-0000-0000-000000000002",
+      title: "Разобрать личные задачи",
+      priority: "urgent",
+      dueDate: "2026-06-30",
+      goalId: "",
+      habitTaskId: "",
+      monthId: ""
+    };
+
+    expect(personalBoardTaskSchema.safeParse(baseTask).success).toBe(true);
+    expect(personalBoardTaskSchema.safeParse({ ...baseTask, priority: "critical" }).success).toBe(false);
+    expect(personalBoardTaskSchema.safeParse({ ...baseTask, title: " " }).success).toBe(false);
   });
 });

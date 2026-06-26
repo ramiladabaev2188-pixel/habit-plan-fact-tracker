@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,6 +16,7 @@ import {
   Menu,
   NotebookText,
   Presentation,
+  Rows3,
   Settings,
   ShieldCheck,
   Users,
@@ -30,8 +32,9 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/daily", label: "День", icon: ListChecks },
-  { href: "/calendar", label: "Календарь", icon: CalendarDays },
+  { href: "/tasks", label: "Задачи", icon: Rows3 },
   { href: "/planner", label: "План", icon: ClipboardList },
+  { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/analytics", label: "Аналитика", icon: LineChart },
   { href: "/weekly", label: "Неделя", icon: FileText },
   { href: "/monthly-report", label: "Отчет", icon: Presentation },
@@ -43,9 +46,9 @@ const navItems = [
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
-const primaryHrefs = new Set(["/dashboard", "/daily", "/planner", "/team"]);
+const primaryHrefs = new Set(["/dashboard", "/daily", "/tasks", "/planner"]);
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const isLogin = pathname === "/login";

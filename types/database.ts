@@ -726,6 +726,138 @@ export type Database = {
         };
         Relationships: [];
       };
+      personal_boards: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          is_default: boolean;
+          is_archived: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          is_default?: boolean;
+          is_archived?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          is_default?: boolean;
+          is_archived?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      personal_board_columns: {
+        Row: {
+          id: string;
+          user_id: string;
+          board_id: string;
+          title: string;
+          color: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          board_id: string;
+          title: string;
+          color?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          title?: string;
+          color?: string;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      personal_board_tasks: {
+        Row: {
+          id: string;
+          user_id: string;
+          board_id: string;
+          column_id: string;
+          title: string;
+          description: string | null;
+          priority: "low" | "medium" | "high" | "urgent";
+          due_date: string | null;
+          goal_id: string | null;
+          habit_task_id: string | null;
+          month_id: string | null;
+          sort_order: number;
+          is_archived: boolean;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          board_id: string;
+          column_id: string;
+          title: string;
+          description?: string | null;
+          priority?: "low" | "medium" | "high" | "urgent";
+          due_date?: string | null;
+          goal_id?: string | null;
+          habit_task_id?: string | null;
+          month_id?: string | null;
+          sort_order?: number;
+          is_archived?: boolean;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          column_id?: string;
+          title?: string;
+          description?: string | null;
+          priority?: "low" | "medium" | "high" | "urgent";
+          due_date?: string | null;
+          goal_id?: string | null;
+          habit_task_id?: string | null;
+          month_id?: string | null;
+          sort_order?: number;
+          is_archived?: boolean;
+          completed_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      personal_board_comments: {
+        Row: {
+          id: string;
+          user_id: string;
+          task_id: string;
+          content: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          task_id: string;
+          content: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          content?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       change_logs: {
         Row: {
           id: string;

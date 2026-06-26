@@ -236,6 +236,7 @@ export type TeamChallengeCheckin = {
 };
 
 export type TeamBoardPriority = "low" | "medium" | "high" | "urgent";
+export type PersonalBoardPriority = "low" | "medium" | "high" | "urgent";
 
 export type TeamBoard = {
   id: string;
@@ -276,6 +277,55 @@ export type TeamBoardComment = {
   id: string;
   task_id: string;
   author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PersonalBoard = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  is_default: boolean;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PersonalBoardColumn = {
+  id: string;
+  user_id: string;
+  board_id: string;
+  title: string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type PersonalBoardTask = {
+  id: string;
+  user_id: string;
+  board_id: string;
+  column_id: string;
+  title: string;
+  description: string | null;
+  priority: PersonalBoardPriority;
+  due_date: string | null;
+  goal_id: string | null;
+  habit_task_id: string | null;
+  month_id: string | null;
+  sort_order: number;
+  is_archived: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PersonalBoardComment = {
+  id: string;
+  user_id: string;
+  task_id: string;
   content: string;
   created_at: string;
   updated_at: string;
