@@ -24,19 +24,21 @@ import { Select } from "@/components/ui/select";
 import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { getMonthDates, getMonthTitle, toDateKey, weekDayOptions } from "@/lib/dates/month";
 import { formatScore } from "@/lib/utils";
-import type { Category, DailyPlan, Month, Task } from "@/types/domain";
+import type { Category, DailyPlan, LifeArea, Month, Task } from "@/types/domain";
 
 const colorOptions = ["#16a34a", "#7c3aed", "#f97316", "#2563eb", "#dc2626", "#0f766e"];
 
 export function PlannerWorkspace({
   months,
   selectedMonth,
+  lifeAreas,
   categories,
   tasks,
   plans
 }: {
   months: Month[];
   selectedMonth: Month | null;
+  lifeAreas: LifeArea[];
   categories: Category[];
   tasks: Task[];
   plans: DailyPlan[];
@@ -50,6 +52,7 @@ export function PlannerWorkspace({
     plans.map((plan) => [`${plan.task_id}:${plan.date}`, plan])
   );
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
+  const lifeAreaMap = new Map(lifeAreas.map((area) => [area.id, area]));
   const activeTasks = tasks.filter((task) => task.is_active);
   const visiblePlanTasks = tasks.filter(
     (task) => task.is_active || plans.some((plan) => plan.task_id === task.id)
@@ -135,6 +138,17 @@ export function PlannerWorkspace({
                 <Label htmlFor="category-name">Название</Label>
                 <Input id="category-name" name="name" placeholder="Например, Тело" />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="category-life-area">Сфера жизни</Label>
+                <Select id="category-life-area" name="lifeAreaId" defaultValue="">
+                  <option value="">Без сферы</option>
+                  {lifeAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <div className="grid grid-cols-[1fr_auto] gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="category-color">Цвет</Label>
@@ -156,6 +170,21 @@ export function PlannerWorkspace({
                           name="name"
                           defaultValue={category.name}
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`planner-category-life-area-${category.id}`}>Сфера жизни</Label>
+                        <Select
+                          id={`planner-category-life-area-${category.id}`}
+                          name="lifeAreaId"
+                          defaultValue={category.life_area_id ?? ""}
+                        >
+                          <option value="">Без сферы</option>
+                          {lifeAreas.map((area) => (
+                            <option key={area.id} value={area.id}>
+                              {area.name}
+                            </option>
+                          ))}
+                        </Select>
                       </div>
                       <div className="grid grid-cols-[1fr_auto] gap-3">
                         <div className="space-y-2">
@@ -180,6 +209,11 @@ export function PlannerWorkspace({
                         />
                         {category.name}
                       </Badge>
+                      {category.life_area_id ? (
+                        <Badge variant="secondary">
+                          {lifeAreaMap.get(category.life_area_id)?.name ?? "Сфера"}
+                        </Badge>
+                      ) : null}
                       <form action={deleteCategoryAction}>
                         <input type="hidden" name="id" value={category.id} />
                         <ConfirmSubmitButton

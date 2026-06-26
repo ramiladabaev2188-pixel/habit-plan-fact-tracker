@@ -23,6 +23,7 @@ import {
   factValueSchema,
   goalSchema,
   importPreviewSchema,
+  lifeAreaSchema,
   monthSchema,
   noteSchema,
   planGenerationSchema,
@@ -79,6 +80,7 @@ type SaveDailyFactsResult = {
 };
 
 type ImportedPayload = {
+  life_areas?: Array<Record<string, unknown>>;
   categories?: Array<Record<string, unknown>>;
   tasks?: Array<Record<string, unknown>>;
   months?: Array<Record<string, unknown>>;
@@ -348,18 +350,80 @@ export async function copyMonthFromTemplateAction(formData: FormData) {
   redirect(`/planner?month=${targetMonth.id}`);
 }
 
+export async function upsertLifeAreaAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = lifeAreaSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    name: formData.get("name"),
+    color: formData.get("color"),
+    icon: formData.get("icon"),
+    description: formData.get("description"),
+    sortOrder: formData.get("sortOrder")
+  });
+
+  const payload = {
+    user_id: userId,
+    name: parsed.name,
+    color: parsed.color,
+    icon: parsed.icon || null,
+    description: parsed.description || null,
+    sort_order: parsed.sortOrder ?? 0,
+    is_active: true
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("life_areas")
+        .update({
+          name: payload.name,
+          color: payload.color,
+          icon: payload.icon,
+          description: payload.description,
+          sort_order: payload.sort_order,
+          is_active: true
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("life_areas").upsert(payload, { onConflict: "user_id,name" });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
+export async function archiveLifeAreaAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const lifeAreaId = entityIdSchema.parse(formData.get("id"));
+
+  const { error } = await supabase
+    .from("life_areas")
+    .update({ is_active: false })
+    .eq("id", lifeAreaId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidateTracker();
+}
+
 export async function createCategoryAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = categorySchema.parse({
     name: formData.get("name"),
-    color: formData.get("color")
+    color: formData.get("color"),
+    lifeAreaId: formData.get("lifeAreaId")
   });
 
   const { error } = await supabase.from("categories").upsert(
     {
       user_id: userId,
       name: parsed.name,
-      color: parsed.color
+      color: parsed.color,
+      life_area_id: parsed.lifeAreaId || null
     },
     { onConflict: "user_id,name" }
   );
@@ -376,14 +440,16 @@ export async function updateCategoryAction(formData: FormData) {
   const parsed = categoryUpdateSchema.parse({
     id: formData.get("id"),
     name: formData.get("name"),
-    color: formData.get("color")
+    color: formData.get("color"),
+    lifeAreaId: formData.get("lifeAreaId")
   });
 
   const { error } = await supabase
     .from("categories")
     .update({
       name: parsed.name,
-      color: parsed.color
+      color: parsed.color,
+      life_area_id: parsed.lifeAreaId || null
     })
     .eq("id", parsed.id)
     .eq("user_id", userId);
@@ -1810,34 +1876,58 @@ export async function upsertGoalAction(formData: FormData) {
     id: String(formData.get("id") ?? "") || undefined,
     title: formData.get("title"),
     description: formData.get("description"),
+    lifeAreaId: formData.get("lifeAreaId"),
     type: formData.get("type"),
     status: formData.get("status"),
     priority: formData.get("priority"),
+    whyText: formData.get("whyText"),
+    targetValue: formData.get("targetValue"),
+    currentValue: formData.get("currentValue"),
+    unit: formData.get("unit"),
+    desiredIdentity: formData.get("desiredIdentity"),
+    progressMode: formData.get("progressMode"),
     startDate: formData.get("startDate"),
     dueDate: formData.get("dueDate"),
     taskIds: formData.getAll("taskIds")
   });
+  const completedAt = parsed.status === "completed" ? new Date().toISOString() : null;
   const goalFields = {
     user_id: userId,
+    life_area_id: parsed.lifeAreaId || null,
     title: parsed.title,
     description: parsed.description || null,
     type: parsed.type,
     status: parsed.status,
     priority: parsed.priority,
+    why_text: parsed.whyText || null,
+    target_value: parsed.targetValue === "" ? null : parsed.targetValue ?? null,
+    current_value: parsed.currentValue === "" ? null : parsed.currentValue ?? null,
+    unit: parsed.unit || null,
+    desired_identity: parsed.desiredIdentity || null,
+    progress_mode: parsed.progressMode,
     start_date: parsed.startDate || null,
-    due_date: parsed.dueDate || null
+    due_date: parsed.dueDate || null,
+    completed_at: completedAt
   };
   const { data: goal, error } = parsed.id
     ? await supabase
         .from("goals")
         .update({
           title: goalFields.title,
+          life_area_id: goalFields.life_area_id,
           description: goalFields.description,
           type: goalFields.type,
           status: goalFields.status,
           priority: goalFields.priority,
+          why_text: goalFields.why_text,
+          target_value: goalFields.target_value,
+          current_value: goalFields.current_value,
+          unit: goalFields.unit,
+          desired_identity: goalFields.desired_identity,
+          progress_mode: goalFields.progress_mode,
           start_date: goalFields.start_date,
-          due_date: goalFields.due_date
+          due_date: goalFields.due_date,
+          completed_at: goalFields.completed_at
         })
         .eq("id", parsed.id)
         .eq("user_id", userId)
@@ -1978,6 +2068,7 @@ export async function importJsonAction(formData: FormData) {
     throw new Error("JSON не удалось прочитать.");
   }
 
+  const lifeAreas = Array.isArray(payload.life_areas) ? payload.life_areas : [];
   const categories = Array.isArray(payload.categories) ? payload.categories : [];
   const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
   const months = Array.isArray(payload.months) ? payload.months : [];
@@ -2040,6 +2131,7 @@ export async function importJsonAction(formData: FormData) {
     }
   }
 
+  const lifeAreaMap = new Map<string, string>();
   const categoryMap = new Map<string, string>();
   const taskMap = new Map<string, string>();
   const taskWeights = new Map<string, number>();
@@ -2051,6 +2143,40 @@ export async function importJsonAction(formData: FormData) {
     approved_at: string | null;
     closed_at: string | null;
   }[] = [];
+
+  for (const area of lifeAreas) {
+    const name = asString(area.name);
+
+    if (!name) {
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("life_areas")
+      .upsert(
+        {
+          user_id: userId,
+          name,
+          color: asString(area.color, "#2563eb"),
+          icon: asNullableString(area.icon),
+          description: asNullableString(area.description),
+          is_active: asBoolean(area.is_active, true),
+          sort_order: asNumberOrNull(area.sort_order)
+        },
+        { onConflict: "user_id,name" }
+      )
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Сфера жизни не импортирована");
+    }
+
+    const oldId = asString(area.id);
+    if (oldId) {
+      lifeAreaMap.set(oldId, data.id);
+    }
+  }
 
   for (const category of categories) {
     const name = asString(category.name);
@@ -2065,6 +2191,7 @@ export async function importJsonAction(formData: FormData) {
         {
           user_id: userId,
           name,
+          life_area_id: lifeAreaMap.get(asString(category.life_area_id)) ?? null,
           color: asString(category.color, "#2563eb"),
           sort_order: asNumberOrNull(category.sort_order)
         },
@@ -2182,13 +2309,21 @@ export async function importJsonAction(formData: FormData) {
     }
 
     const goalPayload = {
+      life_area_id: lifeAreaMap.get(asString(goal.life_area_id)) ?? null,
       title,
       description: asNullableString(goal.description),
       type,
       status: parseGoalStatus(asString(goal.status)),
       priority: parseGoalPriority(asString(goal.priority)),
+      why_text: asNullableString(goal.why_text),
+      target_value: asNumberOrNull(goal.target_value),
+      current_value: asNumberOrNull(goal.current_value),
+      unit: asNullableString(goal.unit),
+      desired_identity: asNullableString(goal.desired_identity),
+      progress_mode: parseGoalProgressMode(asString(goal.progress_mode)),
       start_date: asNullableString(goal.start_date),
-      due_date: asNullableString(goal.due_date)
+      due_date: asNullableString(goal.due_date),
+      completed_at: asNullableString(goal.completed_at)
     };
     const existingGoal = matchingGoals?.[0] ?? null;
     const { data, error } = existingGoal
@@ -2588,6 +2723,14 @@ function parseGoalPriority(value: string): "low" | "medium" | "high" {
   return "medium";
 }
 
+function parseGoalProgressMode(value: string): "linked_tasks" | "manual_value" | "mixed" {
+  if (value === "manual_value" || value === "mixed") {
+    return value;
+  }
+
+  return "linked_tasks";
+}
+
 function parsePlanningMode(value: string): PlanningRuleMode {
   if (
     value === "weekdays" ||
@@ -2613,6 +2756,7 @@ function parseThemePreference(value: string): "light" | "dark" | "system" {
 
 function revalidateTracker() {
   revalidatePath("/dashboard");
+  revalidatePath("/growth");
   revalidatePath("/planner");
   revalidatePath("/daily");
   revalidatePath("/calendar");

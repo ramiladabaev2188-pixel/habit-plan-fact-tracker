@@ -19,6 +19,7 @@ import {
   Rows3,
   Settings,
   ShieldCheck,
+  Sprout,
   Users,
   X
 } from "lucide-react";
@@ -30,6 +31,7 @@ import { Toaster } from "@/components/shared/toaster";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { href: "/growth", label: "Развитие", icon: Sprout },
   { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/daily", label: "День", icon: ListChecks },
   { href: "/tasks", label: "Задачи", icon: Rows3 },

@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  archiveGoalAction,
-  deleteGoalAction,
-  upsertGoalAction
-} from "@/app/actions";
+import { Archive, Compass, Target, Trash2 } from "lucide-react";
+import { archiveGoalAction, deleteGoalAction, upsertGoalAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,10 +13,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
-import { calculateTaskStats } from "@/lib/metrics";
+import { calculateTaskStats, type TaskStat } from "@/lib/metrics";
 import { loadGoalsPage, loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
-import type { Goal } from "@/types/domain";
+import type { Goal, LifeArea } from "@/types/domain";
 
 const typeLabels = {
   long_term: "Долгосрочная",
@@ -40,10 +37,23 @@ const priorityLabels = {
   high: "Высокий"
 };
 
+const progressModeLabels = {
+  linked_tasks: "По связанным задачам",
+  manual_value: "Ручное значение",
+  mixed: "Смешанный прогресс"
+};
+
 export default async function GoalsPage({
   searchParams
 }: {
-  searchParams: Promise<{ status?: string; type?: string; priority?: string; month?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    type?: string;
+    priority?: string;
+    lifeArea?: string;
+    month?: string;
+    page?: string;
+  }>;
 }) {
   const params = await searchParams;
   const result = await loadTrackerData(params.month);
@@ -60,7 +70,7 @@ export default async function GoalsPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { tasks, plans, facts, months, selectedMonth } = result.data;
+  const { tasks, plans, facts, months, selectedMonth, lifeAreas } = result.data;
   const pageSize = 8;
   const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
   const goalsPage = await loadGoalsPage({
@@ -68,7 +78,8 @@ export default async function GoalsPage({
     pageSize,
     status: params.status,
     type: params.type,
-    priority: params.priority
+    priority: params.priority,
+    lifeAreaId: params.lifeArea
   });
 
   if (goalsPage.error) {
@@ -77,32 +88,49 @@ export default async function GoalsPage({
 
   const { goals, goalTasks } = goalsPage;
   const taskStats = calculateTaskStats(plans, facts, tasks);
+  const taskStatMap = new Map(taskStats.map((stat) => [stat.taskId, stat]));
+  const lifeAreaMap = new Map(lifeAreas.map((area) => [area.id, area]));
   const totalPages = Math.max(1, Math.ceil(goalsPage.total / pageSize));
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-normal">Цели</h1>
-        <p className="text-sm text-muted-foreground">
-          Связывайте цели с привычками и смотрите прогресс за {selectedMonth?.title ?? "выбранный период"}.
-        </p>
+    <div className="app-page space-y-5">
+      <div className="workspace-header">
+        <div>
+          <div className="page-kicker">Цели и версия себя</div>
+          <h1 className="workspace-title mt-1">Цели</h1>
+          <p className="workspace-subtitle">
+            Связывайте цели со сферами жизни и задачами. Цель должна показывать не только прогресс, но и зачем она нужна.
+          </p>
+        </div>
       </div>
 
-      <Card>
+      <Card className="section-panel">
         <CardHeader>
           <CardTitle>Создать цель</CardTitle>
-          <CardDescription>Прогресс считается по связанным задачам выбранного месяца.</CardDescription>
+          <CardDescription>
+            Цель может считаться по задачам, вручную по числовому значению или смешанным способом.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <GoalForm tasks={tasks} />
+          <GoalForm tasks={tasks} lifeAreas={lifeAreas} />
         </CardContent>
       </Card>
 
-      <form action="/goals" className="grid gap-3 sm:grid-cols-2 lg:w-[920px] lg:grid-cols-4">
+      <form action="/goals" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Select name="month" defaultValue={selectedMonth?.id ?? ""} aria-label="Период прогресса целей">
           <option value="">Текущий месяц</option>
           {months.map((month) => (
-            <option key={month.id} value={month.id}>{month.title}</option>
+            <option key={month.id} value={month.id}>
+              {month.title}
+            </option>
+          ))}
+        </Select>
+        <Select name="lifeArea" defaultValue={params.lifeArea ?? "all"} aria-label="Сфера жизни">
+          <option value="all">Все сферы</option>
+          {lifeAreas.map((area) => (
+            <option key={area.id} value={area.id}>
+              {area.name}
+            </option>
           ))}
         </Select>
         <Select name="status" defaultValue={params.status ?? "all"}>
@@ -118,20 +146,25 @@ export default async function GoalsPage({
           <option value="monthly">Месячная</option>
           <option value="weekly">Недельная</option>
         </Select>
-        <Select name="priority" defaultValue={params.priority ?? "all"}>
-          <option value="all">Все приоритеты</option>
-          <option value="low">Низкий</option>
-          <option value="medium">Средний</option>
-          <option value="high">Высокий</option>
-        </Select>
-        <Button type="submit" className="sm:col-span-2 lg:col-span-4 lg:w-fit">Применить</Button>
+        <div className="flex gap-2">
+          <Select name="priority" defaultValue={params.priority ?? "all"}>
+            <option value="all">Все приоритеты</option>
+            <option value="low">Низкий</option>
+            <option value="medium">Средний</option>
+            <option value="high">Высокий</option>
+          </Select>
+          <Button type="submit">Фильтр</Button>
+        </div>
       </form>
 
       {goals.length === 0 ? (
-        <Card>
+        <Card className="section-panel">
           <CardContent className="p-8 text-center">
-            <div className="text-lg font-semibold">Целей пока нет</div>
-            <p className="mt-2 text-sm text-muted-foreground">Создайте первую цель и свяжите ее с задачами.</p>
+            <Target className="mx-auto h-10 w-10 text-muted-foreground" />
+            <div className="mt-4 text-lg font-semibold">Целей пока нет</div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Создайте первую цель, привяжите ее к сфере жизни и выберите задачи, которые реально двигают прогресс.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -140,13 +173,18 @@ export default async function GoalsPage({
             const linkedTaskIds = goalTasks
               .filter((item) => item.goal_id === goal.id)
               .map((item) => item.task_id);
-            const linkedStats = taskStats.filter((task) => linkedTaskIds.includes(task.taskId));
+            const linkedStats = linkedTaskIds
+              .map((taskId) => taskStatMap.get(taskId))
+              .filter(Boolean) as TaskStat[];
             const planScore = linkedStats.reduce((sum, task) => sum + task.planScore, 0);
             const factScore = linkedStats.reduce((sum, task) => sum + task.factScore, 0);
-            const progress = planScore > 0 ? factScore / planScore : 0;
+            const linkedProgress = planScore > 0 ? factScore / planScore : 0;
+            const progress = getGoalProgress(goal, linkedProgress);
+            const lifeArea = goal.life_area_id ? lifeAreaMap.get(goal.life_area_id) ?? null : null;
+            const nextStep = getNextStep(linkedStats);
 
             return (
-              <Card key={goal.id}>
+              <Card key={goal.id} className="section-panel">
                 <CardHeader>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -154,6 +192,12 @@ export default async function GoalsPage({
                       <CardDescription>{goal.description || "Описание не заполнено"}</CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {lifeArea ? (
+                        <Badge variant="outline">
+                          <span className="mr-1.5 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: lifeArea.color }} />
+                          {lifeArea.name}
+                        </Badge>
+                      ) : null}
                       <Badge variant={goal.priority === "high" ? "warning" : "outline"}>
                         {priorityLabels[goal.priority]}
                       </Badge>
@@ -165,15 +209,40 @@ export default async function GoalsPage({
                 </CardHeader>
                 <CardContent className="space-y-5">
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>{typeLabels[goal.type]}</span>
+                    <div className="flex flex-wrap justify-between gap-2 text-sm">
+                      <span>{typeLabels[goal.type]} · {progressModeLabels[goal.progress_mode]}</span>
                       <span className="font-semibold">{formatPercent(progress)}</span>
                     </div>
                     <Progress value={Math.min(progress, 1.2) * 100} />
                     <div className="text-sm text-muted-foreground">
                       {formatScore(factScore)} / {formatScore(planScore)} баллов по связанным задачам
                     </div>
+                    {goal.target_value !== null ? (
+                      <div className="text-sm text-muted-foreground">
+                        Значение: {formatScore(goal.current_value ?? 0)} / {formatScore(goal.target_value)} {goal.unit ?? ""}
+                      </div>
+                    ) : null}
                   </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-md border border-border/80 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Зачем</div>
+                      <p className="mt-2 text-sm">{goal.why_text || "Не заполнено. Цель без причины быстро теряет силу."}</p>
+                    </div>
+                    <div className="rounded-md border border-border/80 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Версия себя</div>
+                      <p className="mt-2 text-sm">{goal.desired_identity || "Не заполнено. Опишите, каким человеком эта цель помогает стать."}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-900/50 dark:bg-blue-950/25">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <Compass className="h-4 w-4" />
+                      Следующий шаг
+                    </div>
+                    <p className="mt-1 text-muted-foreground">{nextStep}</p>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     {linkedTaskIds.length ? (
                       linkedTaskIds.map((taskId) => {
@@ -184,14 +253,16 @@ export default async function GoalsPage({
                       <span className="text-sm text-muted-foreground">Задачи не связаны</span>
                     )}
                   </div>
+
                   <details className="rounded-md border border-border/80">
                     <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
-                      Редактировать и связать задачи
+                      Редактировать цель
                     </summary>
                     <div className="border-t border-border/80 p-3">
-                      <GoalForm goal={goal} tasks={tasks} selectedTaskIds={linkedTaskIds} />
+                      <GoalForm goal={goal} tasks={tasks} lifeAreas={lifeAreas} selectedTaskIds={linkedTaskIds} />
                     </div>
                   </details>
+
                   <div className="flex flex-wrap gap-2">
                     <form action={archiveGoalAction}>
                       <input type="hidden" name="goalId" value={goal.id} />
@@ -201,6 +272,7 @@ export default async function GoalsPage({
                         size="sm"
                         message="Архивировать эту цель?"
                       >
+                        <Archive className="h-4 w-4" />
                         Архивировать
                       </ConfirmSubmitButton>
                     </form>
@@ -212,6 +284,7 @@ export default async function GoalsPage({
                         size="sm"
                         message="Удалить цель без восстановления?"
                       >
+                        <Trash2 className="h-4 w-4" />
                         Удалить
                       </ConfirmSubmitButton>
                     </form>
@@ -225,14 +298,14 @@ export default async function GoalsPage({
 
       {goalsPage.total > pageSize ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
-          <Button asChild variant="outline" size="sm" disabled={currentPage <= 1}>
-            <Link href={createPageHref(params, currentPage - 1)}>Назад</Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.max(1, currentPage - 1))}>Назад</Link>
           </Button>
           <div className="text-sm text-muted-foreground">
             Страница {currentPage} из {totalPages}
           </div>
-          <Button asChild variant="outline" size="sm" disabled={currentPage >= totalPages}>
-            <Link href={createPageHref(params, currentPage + 1)}>Вперед</Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.min(totalPages, currentPage + 1))}>Вперед</Link>
           </Button>
         </div>
       ) : null}
@@ -253,13 +326,49 @@ function createPageHref(params: Record<string, string | undefined>, page: number
   return `/goals?${search.toString()}`;
 }
 
+function getGoalProgress(goal: Goal, linkedProgress: number) {
+  const manualProgress =
+    goal.target_value && goal.target_value > 0
+      ? Math.max(0, Number(goal.current_value ?? 0) / Number(goal.target_value))
+      : null;
+
+  if (goal.progress_mode === "manual_value") {
+    return manualProgress ?? 0;
+  }
+
+  if (goal.progress_mode === "mixed") {
+    const values = [linkedProgress, manualProgress].filter((value): value is number => value !== null);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
+  return linkedProgress;
+}
+
+function getNextStep(linkedStats: TaskStat[]) {
+  if (!linkedStats.length) {
+    return "Свяжите цель с задачами, чтобы система могла показать следующий шаг.";
+  }
+
+  const focus = [...linkedStats]
+    .filter((task) => task.planScore > 0)
+    .sort((a, b) => b.requiredPerDay - a.requiredPerDay || a.completion - b.completion)[0];
+
+  if (!focus) {
+    return "По связанным задачам пока нет плана на выбранный месяц.";
+  }
+
+  return `${focus.title}: нужно держать примерно ${formatScore(focus.requiredPerDay)} балла в день.`;
+}
+
 function GoalForm({
   goal,
   tasks,
+  lifeAreas,
   selectedTaskIds = []
 }: {
   goal?: Goal;
   tasks: { id: string; title: string }[];
+  lifeAreas: LifeArea[];
   selectedTaskIds?: string[];
 }) {
   return (
@@ -271,15 +380,19 @@ function GoalForm({
           <Input name="title" defaultValue={goal?.title ?? ""} required />
         </div>
         <div className="space-y-2">
-          <Label>Приоритет</Label>
-          <Select name="priority" defaultValue={goal?.priority ?? "medium"}>
-            <option value="low">Низкий</option>
-            <option value="medium">Средний</option>
-            <option value="high">Высокий</option>
+          <Label>Сфера жизни</Label>
+          <Select name="lifeAreaId" defaultValue={goal?.life_area_id ?? ""}>
+            <option value="">Без сферы</option>
+            {lifeAreas.map((area) => (
+              <option key={area.id} value={area.id}>
+                {area.name}
+              </option>
+            ))}
           </Select>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+
+      <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-2">
           <Label>Тип</Label>
           <Select name="type" defaultValue={goal?.type ?? "monthly"}>
@@ -297,8 +410,40 @@ function GoalForm({
             <option value="archived">Архив</option>
           </Select>
         </div>
+        <div className="space-y-2">
+          <Label>Приоритет</Label>
+          <Select name="priority" defaultValue={goal?.priority ?? "medium"}>
+            <option value="low">Низкий</option>
+            <option value="medium">Средний</option>
+            <option value="high">Высокий</option>
+          </Select>
+        </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-2">
+          <Label>Расчет прогресса</Label>
+          <Select name="progressMode" defaultValue={goal?.progress_mode ?? "linked_tasks"}>
+            <option value="linked_tasks">По задачам</option>
+            <option value="manual_value">Ручное значение</option>
+            <option value="mixed">Смешанный</option>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Текущее значение</Label>
+          <Input name="currentValue" type="number" min="0" step="0.01" defaultValue={goal?.current_value ?? ""} />
+        </div>
+        <div className="space-y-2">
+          <Label>Целевое значение</Label>
+          <Input name="targetValue" type="number" min="0" step="0.01" defaultValue={goal?.target_value ?? ""} />
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-2">
+          <Label>Единица</Label>
+          <Input name="unit" placeholder="кг, ₽, часов, страниц" defaultValue={goal?.unit ?? ""} />
+        </div>
         <div className="space-y-2">
           <Label>Дата начала</Label>
           <Input name="startDate" type="date" defaultValue={goal?.start_date ?? ""} />
@@ -308,10 +453,25 @@ function GoalForm({
           <Input name="dueDate" type="date" defaultValue={goal?.due_date ?? ""} />
         </div>
       </div>
+
       <div className="space-y-2">
         <Label>Описание</Label>
         <Textarea name="description" defaultValue={goal?.description ?? ""} className="min-h-20" />
       </div>
+      <div className="space-y-2">
+        <Label>Зачем</Label>
+        <Textarea name="whyText" defaultValue={goal?.why_text ?? ""} className="min-h-20" />
+      </div>
+      <div className="space-y-2">
+        <Label>Версия себя</Label>
+        <Textarea
+          name="desiredIdentity"
+          defaultValue={goal?.desired_identity ?? ""}
+          placeholder="Например: человек, который держит слово перед собой"
+          className="min-h-20"
+        />
+      </div>
+
       <div className="space-y-2">
         <Label>Связать задачи</Label>
         <div className="grid gap-2 sm:grid-cols-2">

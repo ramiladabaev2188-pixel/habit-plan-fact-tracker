@@ -35,6 +35,7 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
+          life_area_id: string | null;
           name: string;
           color: string;
           sort_order: number | null;
@@ -43,15 +44,53 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
+          life_area_id?: string | null;
           name: string;
           color: string;
           sort_order?: number | null;
           created_at?: string;
         };
         Update: {
+          life_area_id?: string | null;
           name?: string;
           color?: string;
           sort_order?: number | null;
+        };
+        Relationships: [];
+      };
+      life_areas: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          color: string;
+          icon: string | null;
+          description: string | null;
+          is_active: boolean;
+          sort_order: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          color?: string;
+          icon?: string | null;
+          description?: string | null;
+          is_active?: boolean;
+          sort_order?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          color?: string;
+          icon?: string | null;
+          description?: string | null;
+          is_active?: boolean;
+          sort_order?: number | null;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -187,37 +226,61 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
+          life_area_id: string | null;
           title: string;
           description: string | null;
           type: "long_term" | "monthly" | "weekly";
           status: "active" | "completed" | "paused" | "archived";
           priority: "low" | "medium" | "high";
+          why_text: string | null;
+          target_value: number | null;
+          current_value: number | null;
+          unit: string | null;
+          desired_identity: string | null;
+          progress_mode: "linked_tasks" | "manual_value" | "mixed";
           start_date: string | null;
           due_date: string | null;
+          completed_at: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
+          life_area_id?: string | null;
           title: string;
           description?: string | null;
           type?: "long_term" | "monthly" | "weekly";
           status?: "active" | "completed" | "paused" | "archived";
           priority?: "low" | "medium" | "high";
+          why_text?: string | null;
+          target_value?: number | null;
+          current_value?: number | null;
+          unit?: string | null;
+          desired_identity?: string | null;
+          progress_mode?: "linked_tasks" | "manual_value" | "mixed";
           start_date?: string | null;
           due_date?: string | null;
+          completed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
+          life_area_id?: string | null;
           title?: string;
           description?: string | null;
           type?: "long_term" | "monthly" | "weekly";
           status?: "active" | "completed" | "paused" | "archived";
           priority?: "low" | "medium" | "high";
+          why_text?: string | null;
+          target_value?: number | null;
+          current_value?: number | null;
+          unit?: string | null;
+          desired_identity?: string | null;
+          progress_mode?: "linked_tasks" | "manual_value" | "mixed";
           start_date?: string | null;
           due_date?: string | null;
+          completed_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];

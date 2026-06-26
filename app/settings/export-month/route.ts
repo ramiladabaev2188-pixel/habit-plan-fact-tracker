@@ -49,8 +49,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: monthError?.message ?? "Месяц не найден" }, { status: 404 });
   }
 
-  const [preferences, categories, tasks, goals, goalTasks, notes, planningRules, dailyNotes, plans, facts] = await Promise.all([
+  const [preferences, lifeAreas, categories, tasks, goals, goalTasks, notes, planningRules, dailyNotes, plans, facts] = await Promise.all([
     supabase.from("user_preferences").select("*").eq("user_id", user.id).maybeSingle(),
+    supabase.from("life_areas").select("*").eq("user_id", user.id).order("sort_order"),
     supabase.from("categories").select("*").eq("user_id", user.id).order("sort_order"),
     supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at"),
     supabase.from("goals").select("*").eq("user_id", user.id).order("created_at"),
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
     exported_at: new Date().toISOString(),
     scope: "month",
     user_preferences: preferences.data,
+    life_areas: lifeAreas.data ?? [],
     categories: categories.data ?? [],
     tasks: tasks.data ?? [],
     months: [month],

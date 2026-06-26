@@ -2,6 +2,7 @@ export type MonthStatus = "draft" | "approved" | "closed";
 export type GoalType = "long_term" | "monthly" | "weekly";
 export type GoalStatus = "active" | "completed" | "paused" | "archived";
 export type GoalPriority = "low" | "medium" | "high";
+export type GoalProgressMode = "linked_tasks" | "manual_value" | "mixed";
 export type ThemePreference = "light" | "dark" | "system";
 export type TeamRole = "owner" | "admin" | "member";
 export type TeamMemberStatus = "active" | "left";
@@ -27,10 +28,24 @@ export type Profile = {
 export type Category = {
   id: string;
   user_id: string;
+  life_area_id: string | null;
   name: string;
   color: string;
   sort_order: number | null;
   created_at: string;
+};
+
+export type LifeArea = {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  description: string | null;
+  is_active: boolean;
+  sort_order: number | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Task = {
@@ -84,13 +99,21 @@ export type DailyFact = {
 export type Goal = {
   id: string;
   user_id: string;
+  life_area_id: string | null;
   title: string;
   description: string | null;
   type: GoalType;
   status: GoalStatus;
   priority: GoalPriority;
+  why_text: string | null;
+  target_value: number | null;
+  current_value: number | null;
+  unit: string | null;
+  desired_identity: string | null;
+  progress_mode: GoalProgressMode;
   start_date: string | null;
   due_date: string | null;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -333,6 +356,7 @@ export type PersonalBoardComment = {
 
 export type TrackerData = {
   profile: Profile | null;
+  lifeAreas: LifeArea[];
   categories: Category[];
   tasks: Task[];
   months: Month[];

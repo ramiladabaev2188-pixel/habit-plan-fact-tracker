@@ -38,6 +38,7 @@ export default async function PlannerPage({
       <PlannerWorkspace
         months={result.data.months}
         selectedMonth={result.data.selectedMonth}
+        lifeAreas={result.data.lifeAreas}
         categories={result.data.categories}
         tasks={result.data.tasks}
         plans={result.data.plans}

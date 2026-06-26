@@ -31,9 +31,10 @@ export async function GET() {
     );
   }
 
-  const [profile, preferences, categories, tasks, months, goals, goalTasks, notes, planningRules, dailyNotes] = await Promise.all([
+  const [profile, preferences, lifeAreas, categories, tasks, months, goals, goalTasks, notes, planningRules, dailyNotes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("user_preferences").select("*").eq("user_id", user.id).maybeSingle(),
+    supabase.from("life_areas").select("*").eq("user_id", user.id).order("sort_order"),
     supabase.from("categories").select("*").eq("user_id", user.id).order("sort_order"),
     supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at"),
     supabase.from("months").select("*").eq("user_id", user.id).order("year").order("month"),
@@ -59,6 +60,7 @@ export async function GET() {
     exported_at: new Date().toISOString(),
     profile: profile.data,
     user_preferences: preferences.data,
+    life_areas: lifeAreas.data ?? [],
     categories: categories.data ?? [],
     tasks: tasks.data ?? [],
     months: months.data ?? [],

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const summaryKeys = [
+  ["life_areas", "сфер жизни"],
   ["categories", "категорий"],
   ["tasks", "задач"],
   ["months", "месяцев"],

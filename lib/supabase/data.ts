@@ -7,6 +7,7 @@ import type {
   DailyPlan,
   Goal,
   GoalTask,
+  LifeArea,
   Month,
   Note,
   Profile,
@@ -55,7 +56,19 @@ export type GoalPageFilters = {
   status?: string;
   type?: string;
   priority?: string;
+  lifeAreaId?: string;
 };
+
+const defaultLifeAreas = [
+  { name: "Здоровье", color: "#16a34a", icon: "heart-pulse", description: "Тело, сон, питание, движение и базовая энергия.", sort_order: 10 },
+  { name: "Дисциплина", color: "#2563eb", icon: "shield-check", description: "Режим, регулярность, фокус и выполнение обещаний себе.", sort_order: 20 },
+  { name: "Финансы", color: "#f97316", icon: "wallet", description: "Доход, навыки монетизации, учет и финансовая устойчивость.", sort_order: 30 },
+  { name: "Работа/карьера", color: "#0f766e", icon: "briefcase-business", description: "Профессиональный рост, проекты и карьерная траектория.", sort_order: 40 },
+  { name: "Обучение", color: "#7c3aed", icon: "book-open-check", description: "Книги, курсы, практика и развитие мышления.", sort_order: 50 },
+  { name: "Семья/отношения", color: "#db2777", icon: "users-round", description: "Близость, коммуникация, вклад в семью и окружение.", sort_order: 60 },
+  { name: "Вера/духовность", color: "#0891b2", icon: "sparkles", description: "Внутренний стержень, поклонение, смыслы и духовная практика.", sort_order: 70 },
+  { name: "Отдых/энергия", color: "#65a30d", icon: "battery-charging", description: "Восстановление, паузы, настроение и ресурс.", sort_order: 80 }
+] as const;
 
 export type HistoryPageOptions = {
   page?: number;
@@ -121,8 +134,25 @@ export async function loadTrackerData(
     { onConflict: "user_id" }
   );
 
-  const [profileResult, categoriesResult, tasksResult, monthsResult, planningRulesResult, preferencesResult] = await Promise.all([
+  await ensureDefaultLifeAreas(supabase, user.id);
+
+  const [
+    profileResult,
+    lifeAreasResult,
+    categoriesResult,
+    tasksResult,
+    monthsResult,
+    planningRulesResult,
+    preferencesResult
+  ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("life_areas")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("name"),
     supabase.from("categories").select("*").eq("user_id", user.id).order("sort_order").order("name"),
     supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at"),
     supabase
@@ -137,6 +167,7 @@ export async function loadTrackerData(
 
   const error =
     profileResult.error?.message ??
+    lifeAreasResult.error?.message ??
     categoriesResult.error?.message ??
     tasksResult.error?.message ??
     monthsResult.error?.message ??
@@ -218,6 +249,7 @@ export async function loadTrackerData(
     user,
     data: {
       profile: profileResult.data ? normalizeProfile(profileResult.data) : null,
+      lifeAreas: (lifeAreasResult.data ?? []).map(normalizeLifeArea),
       categories: (categoriesResult.data ?? []).map(normalizeCategory),
       tasks: (tasksResult.data ?? []).map(normalizeTask),
       months,
@@ -301,6 +333,9 @@ export async function loadGoalsPage(filters: GoalPageFilters) {
   }
   if (["low", "medium", "high"].includes(filters.priority ?? "")) {
     query = query.eq("priority", filters.priority as "low" | "medium" | "high");
+  }
+  if (filters.lifeAreaId && filters.lifeAreaId !== "all") {
+    query = query.eq("life_area_id", filters.lifeAreaId);
   }
 
   const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
@@ -402,7 +437,21 @@ function sanitizeSearch(value?: string) {
   return (value ?? "").replace(/[,%()]/g, " ").trim().slice(0, 120);
 }
 
+async function ensureDefaultLifeAreas(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  await supabase.from("life_areas").upsert(
+    defaultLifeAreas.map((area) => ({
+      user_id: userId,
+      ...area
+    })),
+    { onConflict: "user_id,name" }
+  );
+}
+
 export function normalizeProfile(row: Profile): Profile {
+  return row;
+}
+
+export function normalizeLifeArea(row: LifeArea): LifeArea {
   return row;
 }
 
@@ -441,7 +490,11 @@ export function normalizeDailyFact(row: DailyFact): DailyFact {
 }
 
 export function normalizeGoal(row: Goal): Goal {
-  return row;
+  return {
+    ...row,
+    target_value: row.target_value === null ? null : Number(row.target_value),
+    current_value: row.current_value === null ? null : Number(row.current_value)
+  };
 }
 
 export function normalizeGoalTask(row: GoalTask): GoalTask {

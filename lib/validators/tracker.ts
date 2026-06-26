@@ -25,7 +25,7 @@ export const dateKeySchema = z
 export const planValueSchema = z
   .number()
   .min(0, "План не может быть отрицательным")
-  .max(2, "Для MVP план ограничен шкалой 0-2")
+  .max(2, "План ограничен шкалой 0-2")
   .refine(quarterStep, "План должен быть кратен 0.25");
 
 export const monthSchema = z.object({
@@ -34,9 +34,19 @@ export const monthSchema = z.object({
   title: z.string().trim().min(2, "Укажите название месяца")
 });
 
+export const lifeAreaSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(2, "Название сферы слишком короткое").max(80),
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Укажите цвет в формате HEX"),
+  icon: z.string().trim().max(64).optional(),
+  description: z.string().trim().max(500).optional(),
+  sortOrder: z.coerce.number().int().min(0).max(10_000).optional()
+});
+
 export const categorySchema = z.object({
   name: z.string().trim().min(2, "Название слишком короткое"),
-  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Укажите цвет в формате HEX")
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Укажите цвет в формате HEX"),
+  lifeAreaId: z.string().uuid().or(z.literal("")).optional()
 });
 
 export const categoryUpdateSchema = categorySchema.extend({
@@ -89,9 +99,16 @@ export const goalSchema = z.object({
   id: z.string().uuid().optional(),
   title: z.string().trim().min(2, "Название слишком короткое"),
   description: z.string().trim().optional(),
+  lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
   type: z.enum(["long_term", "monthly", "weekly"]),
   status: z.enum(["active", "completed", "paused", "archived"]),
   priority: z.enum(["low", "medium", "high"]),
+  whyText: z.string().trim().optional(),
+  targetValue: z.coerce.number().nonnegative().or(z.literal("")).optional(),
+  currentValue: z.coerce.number().nonnegative().or(z.literal("")).optional(),
+  unit: z.string().trim().optional(),
+  desiredIdentity: z.string().trim().optional(),
+  progressMode: z.enum(["linked_tasks", "manual_value", "mixed"]).default("linked_tasks"),
   startDate: z.string().trim().optional(),
   dueDate: z.string().trim().optional(),
   taskIds: z.array(z.string().uuid()).default([])
