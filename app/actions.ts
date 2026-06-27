@@ -113,6 +113,15 @@ type ImportedPayload = {
   user_preferences?: Record<string, unknown> | null;
 };
 
+function isMissingTaskInputColumns(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("input_mode") || normalized.includes("unit");
+}
+
+function getTaskInputMigrationMessage() {
+  return "Для измеримых задач нужно применить миграцию Supabase 202606270004_measurable_tasks_and_quality.sql.";
+}
+
 export async function signInAction(formData: FormData) {
   const parsedCredentials = signInSchema.safeParse({
     email: formData.get("email"),
@@ -508,22 +517,29 @@ export async function createTaskAction(formData: FormData) {
     unit: formData.get("unit")
   });
 
-  const { error } = await supabase.from("tasks").upsert(
+  const basePayload = {
+    user_id: userId,
+    category_id: parsed.categoryId,
+    title: parsed.title,
+    description: parsed.description || null,
+    weight: parsed.weight,
+    is_active: true
+  };
+  const { error: initialError } = await supabase.from("tasks").upsert(
     {
-      user_id: userId,
-      category_id: parsed.categoryId,
-      title: parsed.title,
-      description: parsed.description || null,
-      weight: parsed.weight,
+      ...basePayload,
       input_mode: parsed.inputMode,
-      unit: parsed.inputMode === "measured" ? parsed.unit || null : null,
-      is_active: true
+      unit: parsed.inputMode === "measured" ? parsed.unit || null : null
     },
     { onConflict: "user_id,title" }
   );
+  const { error } =
+    initialError && parsed.inputMode === "ratio" && isMissingTaskInputColumns(initialError.message)
+      ? await supabase.from("tasks").upsert(basePayload, { onConflict: "user_id,title" })
+      : { error: initialError };
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(isMissingTaskInputColumns(error.message) ? getTaskInputMigrationMessage() : error.message);
   }
 
   revalidateTracker();
@@ -541,21 +557,32 @@ export async function updateTaskAction(formData: FormData) {
     unit: formData.get("unit")
   });
 
-  const { error } = await supabase
+  const basePayload = {
+    category_id: parsed.categoryId,
+    title: parsed.title,
+    description: parsed.description || null,
+    weight: parsed.weight
+  };
+  const { error: initialError } = await supabase
     .from("tasks")
     .update({
-      category_id: parsed.categoryId,
-      title: parsed.title,
-      description: parsed.description || null,
-      weight: parsed.weight,
+      ...basePayload,
       input_mode: parsed.inputMode,
       unit: parsed.inputMode === "measured" ? parsed.unit || null : null
     })
     .eq("id", parsed.id)
     .eq("user_id", userId);
+  const { error } =
+    initialError && parsed.inputMode === "ratio" && isMissingTaskInputColumns(initialError.message)
+      ? await supabase
+          .from("tasks")
+          .update(basePayload)
+          .eq("id", parsed.id)
+          .eq("user_id", userId)
+      : { error: initialError };
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(isMissingTaskInputColumns(error.message) ? getTaskInputMigrationMessage() : error.message);
   }
 
   revalidateTracker();
@@ -921,7 +948,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
 
   const [{ data: tasks, error: tasksError }, { data: plans, error: plansError }] = await Promise.all([
     taskIds.length
-      ? supabase.from("tasks").select("id, weight, input_mode").eq("user_id", userId).in("id", taskIds)
+      ? supabase.from("tasks").select("*").eq("user_id", userId).in("id", taskIds)
       : Promise.resolve({ data: [], error: null }),
     taskIds.length
       ? supabase
