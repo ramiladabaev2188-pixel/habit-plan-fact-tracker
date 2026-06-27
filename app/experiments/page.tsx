@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   archiveExperimentAction,
   saveExperimentCheckinAction,
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getTodayKey } from "@/lib/dates/month";
@@ -40,10 +42,13 @@ export default async function ExperimentsPage({
   searchParams: Promise<{ page?: string; status?: string; lifeArea?: string }>;
 }) {
   const params = await searchParams;
+  const pageSize = 12;
+  const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
   const [trackerResult, experimentsResult] = await Promise.all([
     loadTrackerData(undefined),
     loadExperimentsPage({
-      page: Number(params.page ?? 1),
+      page: currentPage,
+      pageSize,
       status: params.status,
       lifeAreaId: params.lifeArea
     })
@@ -67,6 +72,7 @@ export default async function ExperimentsPage({
 
   const { lifeAreas } = trackerResult.data;
   const { experiments, checkins, total } = experimentsResult;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const today = getTodayKey();
   const checkinsByExperiment = new Map<string, typeof checkins>();
   checkins.forEach((checkin) => {
@@ -211,6 +217,9 @@ export default async function ExperimentsPage({
                       <p className="text-sm text-muted-foreground">
                         Выполнено {stats.doneDays} из {stats.totalDays} дней. {stats.summary}
                       </p>
+                      <Badge variant={stats.percent >= 0.8 ? "success" : stats.elapsedDays >= 3 && stats.percent < 0.5 ? "warning" : "outline"}>
+                        {getExperimentVerdict(stats.percent, stats.elapsedDays)}
+                      </Badge>
                     </div>
                     <form action={saveExperimentCheckinAction} className="grid gap-3 rounded-md border p-4 sm:grid-cols-[150px_120px_1fr_auto] sm:items-end">
                       <input type="hidden" name="experimentId" value={experiment.id} />
@@ -231,12 +240,39 @@ export default async function ExperimentsPage({
                   </div>
                   <form action={upsertExperimentAction} className="space-y-3 rounded-md border p-4">
                     <input type="hidden" name="id" value={experiment.id} />
-                    <input type="hidden" name="title" value={experiment.title} />
-                    <input type="hidden" name="hypothesis" value={experiment.hypothesis ?? ""} />
-                    <input type="hidden" name="lifeAreaId" value={experiment.life_area_id ?? ""} />
-                    <input type="hidden" name="startDate" value={experiment.start_date} />
-                    <input type="hidden" name="endDate" value={experiment.end_date} />
-                    <input type="hidden" name="successMetric" value={experiment.success_metric ?? ""} />
+                    <div className="space-y-2">
+                      <Label>Название</Label>
+                      <Input name="title" defaultValue={experiment.title} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сфера</Label>
+                      <Select name="lifeAreaId" defaultValue={experiment.life_area_id ?? ""}>
+                        <option value="">Без сферы</option>
+                        {lifeAreas.map((area) => (
+                          <option key={area.id} value={area.id}>
+                            {area.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Дата начала</Label>
+                        <Input name="startDate" type="date" defaultValue={experiment.start_date} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Дата конца</Label>
+                        <Input name="endDate" type="date" defaultValue={experiment.end_date} required />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Гипотеза</Label>
+                      <Textarea name="hypothesis" defaultValue={experiment.hypothesis ?? ""} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Метрика успеха</Label>
+                      <Input name="successMetric" defaultValue={experiment.success_metric ?? ""} />
+                    </div>
                     <div className="space-y-2">
                       <Label>Итог</Label>
                       <Textarea name="resultSummary" defaultValue={experiment.result_summary ?? ""} />
@@ -256,9 +292,9 @@ export default async function ExperimentsPage({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button type="submit">Сохранить итог</Button>
-                      <Button formAction={archiveExperimentAction} name="id" value={experiment.id} variant="outline">
+                      <ConfirmSubmitButton formAction={archiveExperimentAction} name="id" value={experiment.id} variant="outline" message="Архивировать эксперимент?">
                         В архив
-                      </Button>
+                      </ConfirmSubmitButton>
                     </div>
                   </form>
                 </CardContent>
@@ -274,9 +310,40 @@ export default async function ExperimentsPage({
         </Card>
       )}
 
-      {total > experiments.length ? (
-        <p className="text-sm text-muted-foreground">Показаны первые {experiments.length} из {total}. Фильтры и пагинацию можно расширить дальше.</p>
+      {total > pageSize ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.max(1, currentPage - 1))}>Назад</Link>
+          </Button>
+          <div className="text-sm text-muted-foreground">
+            Страница {currentPage} из {totalPages}
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.min(totalPages, currentPage + 1))}>Вперёд</Link>
+          </Button>
+        </div>
       ) : null}
     </div>
   );
+}
+
+function createPageHref(params: Record<string, string | undefined>, page: number) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key !== "page" && value) {
+      search.set(key, value);
+    }
+  }
+  search.set("page", String(Math.max(1, page)));
+  return `/experiments?${search.toString()}`;
+}
+
+function getExperimentVerdict(percent: number, elapsedDays: number) {
+  if (percent >= 0.8) {
+    return "Гипотеза подтверждается";
+  }
+  if (elapsedDays >= 3 && percent < 0.5) {
+    return "Гипотеза пока не подтверждается";
+  }
+  return "Недостаточно данных";
 }

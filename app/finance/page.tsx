@@ -174,6 +174,11 @@ export default async function FinancePage() {
                   <span>Нужно/мес.: {item.requiredPerMonth === null ? "нет дедлайна" : formatMoney(item.requiredPerMonth)}</span>
                   <span>Прогноз: {item.estimatedDate ?? "нужен положительный поток"}</span>
                 </div>
+                {item.goal.goal_id ? (
+                  <div className="mt-3 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-muted-foreground">
+                    Связь с общей целью сейчас визуальная: суммы обновляются в финансовом контуре отдельно.
+                  </div>
+                ) : null}
                 <details className="mt-4 rounded-md border border-border/80 bg-fog">
                   <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать цель</summary>
                   <form action={upsertFinanceGoalAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
@@ -266,6 +271,20 @@ export default async function FinancePage() {
                             Удалить
                           </ConfirmSubmitButton>
                         </form>
+                        <details className="mt-2 text-left">
+                          <summary className="cursor-pointer text-xs text-muted-foreground">Редактировать</summary>
+                          <form action={upsertFinanceSnapshotAction} className="mt-2 grid min-w-[320px] gap-2 rounded-md border bg-card p-3">
+                            <Input name="date" type="date" defaultValue={snapshot.date} required />
+                            <Input name="income" type="number" step="100" min={0} defaultValue={snapshot.income} aria-label="Доход" />
+                            <Input name="requiredExpenses" type="number" step="100" min={0} defaultValue={snapshot.required_expenses} aria-label="Обязательные расходы" />
+                            <Input name="optionalExpenses" type="number" step="100" min={0} defaultValue={snapshot.optional_expenses} aria-label="Необязательные расходы" />
+                            <Input name="savings" type="number" step="100" min={0} defaultValue={snapshot.savings} aria-label="Накопления" />
+                            <Input name="debtTotal" type="number" step="100" min={0} defaultValue={snapshot.debt_total} aria-label="Долги" />
+                            <Input name="investments" type="number" step="100" min={0} defaultValue={snapshot.investments} aria-label="Инвестиции" />
+                            <Textarea name="comment" defaultValue={snapshot.comment ?? ""} aria-label="Комментарий" />
+                            <Button type="submit" size="sm">Сохранить снимок</Button>
+                          </form>
+                        </details>
                       </td>
                     </tr>
                   ))}

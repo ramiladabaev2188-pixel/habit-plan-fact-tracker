@@ -8,4 +8,6 @@ coverage
 dist
 backups
 .vercel
+playwright-report
+test-results
 *.tsbuildinfo

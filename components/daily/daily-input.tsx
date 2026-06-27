@@ -86,6 +86,7 @@ export function DailyInput({
   );
   const initialRender = useRef(true);
   const undoSnapshotRef = useRef<UndoSnapshot | null>(null);
+  const lastSavedPayloadRef = useRef<string | null>(null);
   const defaultValues = useMemo<DailyForm>(
     () => ({
       entries: items.map((item) => ({
@@ -140,6 +141,7 @@ export function DailyInput({
     form.reset(defaultValues);
     setFilledTaskIds(new Set(items.filter((item) => item.fact).map((item) => item.task.id)));
     undoSnapshotRef.current = null;
+    lastSavedPayloadRef.current = JSON.stringify(defaultValues);
     setCanUndo(false);
     initialRender.current = true;
   }, [defaultValues, form, items]);
@@ -173,6 +175,11 @@ export function DailyInput({
   }, [captureUndoSnapshot, form, markFilled]);
 
   const save = useCallback(async (values: DailyForm) => {
+    const payload = JSON.stringify(values);
+    if (lastSavedPayloadRef.current === payload) {
+      return;
+    }
+
     const result = await saveDailyFactsAction({
         monthId,
         date,
@@ -191,6 +198,7 @@ export function DailyInput({
     }
 
     setSaveError(null);
+    lastSavedPayloadRef.current = payload;
     setSavedAt(new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
     router.refresh();
   }, [date, monthId, router]);
@@ -271,7 +279,7 @@ export function DailyInput({
       startTransition(() => {
         void save(parsed.data);
       });
-    }, 900);
+    }, 1500);
 
     return () => window.clearTimeout(timeout);
   }, [watchedEntries, watchedDailyNote, form, readOnly, save]);

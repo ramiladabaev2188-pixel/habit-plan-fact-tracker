@@ -111,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="app-logo-mark transition-transform duration-200 group-hover:-rotate-3">ПФ</span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold tracking-tight sm:text-base">Трекер план/факт</span>
-              <span className="block truncate text-xs text-muted-foreground">Личный ритм и командный прогресс</span>
+              <span className="block truncate text-xs text-muted-foreground">Личный аналитический центр жизни</span>
             </span>
           </Link>
 

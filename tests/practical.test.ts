@@ -22,6 +22,21 @@ describe("practical contours", () => {
     expect(progress.estimatedMonths).toBe(5);
   });
 
+  it("keeps finance goal progress based on finance values even when linked visually to a regular goal", () => {
+    const goal = {
+      goal_id: "regular-goal-1",
+      target_amount: 200_000,
+      current_amount: 50_000,
+      due_date: null
+    } as FinanceGoal;
+
+    const progress = calculateFinanceGoalProgress(goal, 25_000, new Date("2026-06-15"));
+
+    expect(progress.goal.goal_id).toBe("regular-goal-1");
+    expect(progress.percent).toBe(0.25);
+    expect(progress.remaining).toBe(150_000);
+  });
+
   it("switches health into gentle mode on low energy or high pain", () => {
     const logs = [
       { energy: 2, pain_level: 3, workout_done: false },

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import {
   addCarServiceLogAction,
+  createCarServicePersonalTaskAction,
   deleteCarAction,
   deleteCarServiceItemAction,
   deleteCarServiceLogAction,
@@ -51,7 +52,6 @@ export default async function CarPage() {
   }
 
   const today = getTodayKey();
-  const firstCar = carResult.cars[0] ?? null;
   const itemsWithState = carResult.serviceItems.map((item) => {
     const car = carResult.cars.find((candidate) => candidate.id === item.car_id);
     return car ? { item, car, state: getCarServiceState(item, car) } : null;
@@ -83,29 +83,51 @@ export default async function CarPage() {
             <form action={upsertCarAction} className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="car-name">Название</Label>
-                <Input id="car-name" name="name" placeholder="Мой автомобиль" defaultValue={firstCar?.name ?? ""} required />
-                {firstCar ? <input type="hidden" name="id" value={firstCar.id} /> : null}
+                <Input id="car-name" name="name" placeholder="Мой автомобиль" required />
               </div>
-              <Field id="brand" name="brand" label="Марка" defaultValue={firstCar?.brand ?? ""} />
-              <Field id="model" name="model" label="Модель" defaultValue={firstCar?.model ?? ""} />
-              <NumberField id="year" name="year" label="Год" defaultValue={firstCar?.year ?? ""} />
-              <NumberField id="currentMileage" name="currentMileage" label="Текущий пробег" defaultValue={firstCar?.current_mileage ?? 0} />
+              <Field id="brand" name="brand" label="Марка" />
+              <Field id="model" name="model" label="Модель" />
+              <NumberField id="year" name="year" label="Год" />
+              <NumberField id="currentMileage" name="currentMileage" label="Текущий пробег" defaultValue={0} />
               <div className="sm:col-span-2">
-                <Button type="submit">{firstCar ? "Обновить авто" : "Добавить авто"}</Button>
+                <Button type="submit">Добавить авто</Button>
               </div>
             </form>
-            {firstCar ? (
-              <form action={deleteCarAction} className="mt-3">
-                <input type="hidden" name="id" value={firstCar.id} />
-                <ConfirmSubmitButton
-                  type="submit"
-                  variant="destructive"
-                  size="sm"
-                  message={`Удалить авто «${firstCar.name}» вместе с узлами и историей обслуживания?`}
-                >
-                  Удалить авто
-                </ConfirmSubmitButton>
-              </form>
+            {carResult.cars.length ? (
+              <div className="mt-5 space-y-3">
+                {carResult.cars.map((car) => (
+                  <details key={car.id} className="rounded-md border border-border/80 bg-fog">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+                      {car.name} · {car.current_mileage} км
+                    </summary>
+                    <form action={upsertCarAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
+                      <input type="hidden" name="id" value={car.id} />
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Название</Label>
+                        <Input name="name" defaultValue={car.name} required />
+                      </div>
+                      <Field id={`brand-${car.id}`} name="brand" label="Марка" defaultValue={car.brand ?? ""} />
+                      <Field id={`model-${car.id}`} name="model" label="Модель" defaultValue={car.model ?? ""} />
+                      <NumberField id={`year-${car.id}`} name="year" label="Год" defaultValue={car.year ?? ""} />
+                      <NumberField id={`mileage-${car.id}`} name="currentMileage" label="Текущий пробег" defaultValue={car.current_mileage} />
+                      <div className="flex flex-wrap gap-2 sm:col-span-2">
+                        <Button type="submit" variant="outline">Сохранить авто</Button>
+                      </div>
+                    </form>
+                    <form action={deleteCarAction} className="border-t border-border/80 p-3">
+                      <input type="hidden" name="id" value={car.id} />
+                      <ConfirmSubmitButton
+                        type="submit"
+                        variant="destructive"
+                        size="sm"
+                        message={`Удалить авто «${car.name}» вместе с узлами и историей обслуживания?`}
+                      >
+                        Удалить авто
+                      </ConfirmSubmitButton>
+                    </form>
+                  </details>
+                ))}
+              </div>
             ) : null}
           </CardContent>
         </Card>
@@ -189,6 +211,12 @@ export default async function CarPage() {
                     <span>След. пробег: {row.state.nextMileage ?? "—"}</span>
                     <span>Осталось км: {row.state.kmLeft ?? "—"}</span>
                   </div>
+                  <form action={createCarServicePersonalTaskAction} className="mt-4">
+                    <input type="hidden" name="serviceItemId" value={row.item.id} />
+                    <Button type="submit" variant="outline" size="sm">
+                      Создать личную задачу обслуживания
+                    </Button>
+                  </form>
                   <details className="mt-4 rounded-md border border-border/80 bg-fog">
                     <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать узел</summary>
                     <form action={upsertCarServiceItemAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
@@ -278,7 +306,7 @@ export default async function CarPage() {
                   </Select>
                 </div>
                 <DateField id="serviceDate" name="serviceDate" label="Дата" defaultValue={today} />
-                <NumberField id="mileage" name="mileage" label="Пробег" defaultValue={firstCar?.current_mileage ?? 0} />
+                <NumberField id="mileage" name="mileage" label="Пробег" defaultValue={carResult.cars[0]?.current_mileage ?? 0} />
                 <NumberField id="cost" name="cost" label="Стоимость" defaultValue={0} />
                 <div className="space-y-2">
                   <Label htmlFor="log-comment">Комментарий</Label>

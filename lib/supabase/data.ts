@@ -50,6 +50,9 @@ export type TrackerLoadOptions = {
   includeGoals?: boolean;
   includeNotes?: boolean;
   includeWeeklyReviews?: boolean;
+  includeExperiments?: boolean;
+  includeExperimentCheckins?: boolean;
+  includeLifeEvents?: boolean;
   dailyNotesScope?: "none" | "selected-month" | "all";
 };
 
@@ -153,6 +156,9 @@ export async function loadTrackerData(
   const includeGoals = options.includeGoals ?? false;
   const includeNotes = options.includeNotes ?? false;
   const includeWeeklyReviews = options.includeWeeklyReviews ?? false;
+  const includeExperiments = options.includeExperiments ?? false;
+  const includeExperimentCheckins = options.includeExperimentCheckins ?? false;
+  const includeLifeEvents = options.includeLifeEvents ?? false;
   const dailyNotesScope = options.dailyNotesScope ?? "selected-month";
 
   if (!isSupabaseConfigured()) {
@@ -301,6 +307,42 @@ export async function loadTrackerData(
     return { configured: true, user, data: null, error: goalTasksResult.error.message };
   }
 
+  const [experimentsResult, lifeEventsResult] = await Promise.all([
+    includeExperiments || includeExperimentCheckins
+      ? supabase
+          .from("experiments")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    includeLifeEvents
+      ? supabase
+          .from("life_events")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("event_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  const lifeCenterDataError = experimentsResult.error?.message ?? lifeEventsResult.error?.message ?? null;
+  if (lifeCenterDataError) {
+    return { configured: true, user, data: null, error: lifeCenterDataError };
+  }
+
+  const experiments = (experimentsResult.data ?? []).map(normalizeExperiment);
+  const experimentIds = experiments.map((experiment) => experiment.id);
+  const experimentCheckinsResult =
+    includeExperimentCheckins && experimentIds.length
+      ? await supabase.from("experiment_checkins").select("*").in("experiment_id", experimentIds).order("date")
+      : { data: [], error: null };
+
+  if (experimentCheckinsResult.error) {
+    return { configured: true, user, data: null, error: experimentCheckinsResult.error.message };
+  }
+
   return {
     configured: true,
     user,
@@ -319,9 +361,9 @@ export async function loadTrackerData(
       planningRules: (planningRulesResult.data ?? []).map(normalizePlanningRule),
       dailyNotes: (dailyNotesResult.data ?? []).map(normalizeDailyNote),
       weeklyReviews: (weeklyReviewsResult.data ?? []).map(normalizeWeeklyReview),
-      experiments: [],
-      experimentCheckins: [],
-      lifeEvents: [],
+      experiments,
+      experimentCheckins: (experimentCheckinsResult.data ?? []).map(normalizeExperimentCheckin),
+      lifeEvents: (lifeEventsResult.data ?? []).map(normalizeLifeEvent),
       preferences: preferencesResult.data ? normalizeUserPreference(preferencesResult.data) : null
     },
     error: null

@@ -8,6 +8,14 @@ import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
 import {
+  calculateEnergyCompletionInsight,
+  findInactiveExperiments,
+  findStaleLifeEvents,
+  summarizeExperimentOutcomes
+} from "@/lib/analytics-insights";
+import { calculateGrowthStats } from "@/lib/growth";
+import { calculateLifeCenterGoalProgress } from "@/lib/life-center";
+import {
   calculateCategoryStats,
   calculateDailyStats,
   calculateStreaks,
@@ -16,7 +24,7 @@ import {
 } from "@/lib/metrics";
 import { calculateFailureInsights } from "@/lib/reflection";
 import { getRiskTasks, getStrongTasks } from "@/lib/recommendations";
-import { loadTrackerData } from "@/lib/supabase/data";
+import { loadHealthPage, loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
 
 export default async function AnalyticsPage({
@@ -25,7 +33,16 @@ export default async function AnalyticsPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const result = await loadTrackerData(params.month);
+  const [result, healthResult] = await Promise.all([
+    loadTrackerData(params.month, {
+      includeGoals: true,
+      includeExperiments: true,
+      includeExperimentCheckins: true,
+      includeLifeEvents: true,
+      dailyNotesScope: "all"
+    }),
+    loadHealthPage()
+  ]);
 
   if (!result.configured) {
     return <SetupNotice />;
@@ -39,7 +56,20 @@ export default async function AnalyticsPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { selectedMonth, plans, facts, tasks, categories } = result.data;
+  const {
+    selectedMonth,
+    plans,
+    facts,
+    tasks,
+    categories,
+    lifeAreas,
+    goals,
+    goalTasks,
+    dailyNotes,
+    experiments,
+    experimentCheckins,
+    lifeEvents
+  } = result.data;
 
   if (!selectedMonth) {
     return (
@@ -70,6 +100,23 @@ export default async function AnalyticsPage({
   const riskTasks = getRiskTasks(taskStats, 5, selectedMonth.target_percent);
   const overTasks = getStrongTasks(taskStats, 5, 1);
   const failureInsights = calculateFailureInsights(plans, facts, tasks, today);
+  const growthStats = calculateGrowthStats({
+    lifeAreas,
+    categories,
+    tasks,
+    plans,
+    facts,
+    today: new Date(`${today}T00:00:00`)
+  });
+  const goalProgress = calculateLifeCenterGoalProgress({ goals, goalTasks, tasks, plans, facts, today });
+  const goalsWithoutProgress = goalProgress
+    .filter((item) => item.goal.status === "active" && item.percent <= 0.05)
+    .slice(0, 5);
+  const healthLogs = healthResult.error ? [] : healthResult.logs;
+  const energyInsight = calculateEnergyCompletionInsight(completedDailyStats, dailyNotes, healthLogs);
+  const inactiveExperiments = findInactiveExperiments(experiments, experimentCheckins, today).slice(0, 4);
+  const experimentOutcomes = summarizeExperimentOutcomes(experiments, experimentCheckins, today).slice(0, 4);
+  const staleTimeline = findStaleLifeEvents(lifeEvents, today);
 
   return (
     <div className="space-y-5">
@@ -156,6 +203,125 @@ export default async function AnalyticsPage({
           />
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Сферы жизни</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {growthStats.areas.filter((area) => area.planScore > 0).length ? (
+              growthStats.areas
+                .filter((area) => area.planScore > 0)
+                .sort((a, b) => a.completion - b.completion)
+                .slice(0, 5)
+                .map((area) => (
+                  <TaskLine
+                    key={area.area.id}
+                    title={area.area.name}
+                    value={`30 дней ${formatPercent(area.last30Completion)}`}
+                    variant={area.completion >= 0.8 ? "over" : "warning"}
+                  />
+                ))
+            ) : (
+              <p className="text-sm text-muted-foreground">Свяжите категории со сферами, чтобы видеть, где система проседает.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Энергия и выполнение</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">{energyInsight.message}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Низкая энергия</div>
+                <div className="text-xl font-semibold">
+                  {energyInsight.lowEnergyCompletion === null ? "—" : formatPercent(energyInsight.lowEnergyCompletion)}
+                </div>
+                <div className="text-xs text-muted-foreground">{energyInsight.lowEnergyDays} дней</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Высокая энергия</div>
+                <div className="text-xl font-semibold">
+                  {energyInsight.highEnergyCompletion === null ? "—" : formatPercent(energyInsight.highEnergyCompletion)}
+                </div>
+                <div className="text-xs text-muted-foreground">{energyInsight.highEnergyDays} дней</div>
+              </div>
+            </div>
+            {healthResult.error ? (
+              <p className="text-xs text-warning">Контур здоровья не загрузился: {healthResult.error}</p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Цели без движения</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {goalsWithoutProgress.length ? (
+              goalsWithoutProgress.map((item) => (
+                <TaskLine
+                  key={item.goal.id}
+                  title={item.goal.title}
+                  value={item.source === "manual" ? "обновить значение" : "нет вклада"}
+                  variant="warning"
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">Активные цели получают вклад или пока не требуют внимания.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Эксперименты</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {experimentOutcomes.length ? (
+              experimentOutcomes.map((item) => (
+                <div key={item.experiment.id} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">{item.experiment.title}</div>
+                    <Badge variant={item.stats.percent >= 0.8 ? "success" : "outline"}>
+                      {formatPercent(item.stats.percent)}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.conclusion}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">Пока нет экспериментов для проверки гипотез.</p>
+            )}
+            {inactiveExperiments.length ? (
+              <p className="text-xs text-warning">
+                Не отмечались 3+ дня: {inactiveExperiments.map((experiment) => experiment.title).join(", ")}.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Практические данные</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Таймлайн: {staleTimeline.isStale ? "давно не обновлялся" : `последнее событие ${staleTimeline.latest}`}.
+            </p>
+            <p>
+              Здоровье: {healthLogs.length ? `${healthLogs.length} записей, можно сравнивать с выполнением` : "нет записей для связи с ритмом"}.
+            </p>
+            <p>Вывод: аналитика становится точнее, когда план/факт связан со сферами, целями и ресурсом.</p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>

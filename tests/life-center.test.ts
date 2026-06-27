@@ -237,7 +237,7 @@ describe("life center", () => {
     });
 
     expect(snapshot.developmentIndex).toBe(0.5);
-    expect(snapshot.nextBestStep.title).toBe("Позвонить врачу");
+    expect(snapshot.nextBestStep.title).toBe(carItem.name);
     expect(snapshot.risks.map((risk) => risk.id)).toEqual(
       expect.arrayContaining(["month-forecast", "finance-negative-cashflow", "health-gentle-mode", "car-service-1"])
     );
@@ -248,16 +248,22 @@ describe("life center", () => {
   it("calculates manual and linked goal progress without mixing progress modes", () => {
     const manualGoal = makeGoal("goal-manual", "Финансовая подушка", "manual_value", 100, 25);
     const linkedGoal = makeGoal("goal-linked", "Ходить каждый день", "linked_tasks", null, null);
+    const mixedGoal = makeGoal("goal-mixed", "Укрепить здоровье", "mixed", 100, 25);
     const relation = {
       id: "goal-task-1",
       goal_id: linkedGoal.id,
       task_id: task.id,
       created_at: now
     } satisfies GoalTask;
+    const mixedRelation = {
+      ...relation,
+      id: "goal-task-2",
+      goal_id: mixedGoal.id
+    } satisfies GoalTask;
 
     const progress = calculateLifeCenterGoalProgress({
-      goals: [manualGoal, linkedGoal],
-      goalTasks: [relation],
+      goals: [manualGoal, linkedGoal, mixedGoal],
+      goalTasks: [relation, mixedRelation],
       tasks: [task],
       plans: plans.filter((plan) => plan.task_id === task.id),
       facts: facts.filter((fact) => fact.task_id === task.id),
@@ -266,6 +272,7 @@ describe("life center", () => {
 
     const manual = progress.find((item) => item.goal.id === manualGoal.id);
     const linked = progress.find((item) => item.goal.id === linkedGoal.id);
+    const mixed = progress.find((item) => item.goal.id === mixedGoal.id);
 
     expect(manual?.source).toBe("manual");
     expect(manual?.percent).toBe(0.25);
@@ -273,6 +280,8 @@ describe("life center", () => {
     expect(linked?.source).toBe("tasks");
     expect(linked?.percent).toBe(0.5);
     expect(linked?.label).toContain("50%");
+    expect(mixed?.source).toBe("mixed");
+    expect(mixed?.percent).toBeCloseTo(0.375);
   });
 });
 

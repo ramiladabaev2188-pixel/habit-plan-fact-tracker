@@ -174,6 +174,7 @@ export function calculateLifeCenterSnapshot(input: LifeCenterInput): LifeCenterS
   }
 
   const nextBestStep =
+    getSystemRiskNextStep(risks) ??
     getPersonalBoardNextStep(input.personalBoardTasks ?? []) ??
     (focusTask
       ? {
@@ -335,6 +336,11 @@ function findStaleData(input: LifeCenterInput, today: string): LifeCenterSignal[
   const signals: LifeCenterSignal[] = [];
   const latestHealthDate = latestDate((input.healthLogs ?? []).map((log) => log.date));
   const latestFinanceDate = latestDate((input.financeSnapshots ?? []).map((snapshot) => snapshot.date));
+  const latestExperimentDate = latestDate([
+    ...(input.experiments ?? []).map((item) => item.updated_at.slice(0, 10)),
+    ...(input.experimentCheckins ?? []).map((item) => item.date)
+  ]);
+  const latestEventDate = latestDate((input.lifeEvents ?? []).map((event) => event.event_date));
   const latestWorkDate = latestDate([
     ...(input.workProjects ?? []).map((item) => item.updated_at.slice(0, 10)),
     ...(input.workCases ?? []).map((item) => item.updated_at.slice(0, 10)),
@@ -368,6 +374,62 @@ function findStaleData(input: LifeCenterInput, today: string): LifeCenterSignal[
       href: "/work"
     });
   }
+  if (!latestExperimentDate || daysBetween(latestExperimentDate, today) > 14) {
+    signals.push({
+      id: "stale-experiments",
+      title: "Р­РєСЃРїРµСЂРёРјРµРЅС‚С‹ РЅРµ РѕР±РЅРѕРІР»СЏР»РёСЃСЊ",
+      detail: latestExperimentDate ? `РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: ${latestExperimentDate}.` : "РќРµС‚ Р°РєС‚РёРІРЅС‹С… РїСЂРѕРІРµСЂРѕРє РіРёРїРѕС‚РµР·.",
+      level: "info",
+      href: "/experiments"
+    });
+  }
+  if (!latestEventDate || daysBetween(latestEventDate, today) > 30) {
+    signals.push({
+      id: "stale-timeline",
+      title: "РљР°СЂС‚Р° Р¶РёР·РЅРё РЅРµ РІРµРґРµС‚СЃСЏ",
+      detail: latestEventDate ? `РџРѕСЃР»РµРґРЅРµРµ СЃРѕР±С‹С‚РёРµ: ${latestEventDate}.` : "РќРµС‚ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹С… РІР°Р¶РЅС‹С… СЃРѕР±С‹С‚РёР№.",
+      level: "info",
+      href: "/timeline"
+    });
+  }
+
+  for (const signal of signals) {
+    if (signal.id === "stale-experiments") {
+      signal.title = "Эксперименты давно не обновлялись";
+      signal.detail = latestExperimentDate ? `Последнее обновление: ${latestExperimentDate}.` : "Нет активных проверок гипотез.";
+    }
+    if (signal.id === "stale-timeline") {
+      signal.title = "Карта жизни не ведется";
+      signal.detail = latestEventDate ? `Последнее событие: ${latestEventDate}.` : "Нет зафиксированных важных событий.";
+    }
+  }
+
+  for (const signal of signals) {
+    if (signal.id === "stale-health") {
+      signal.title = "\u0417\u0434\u043e\u0440\u043e\u0432\u044c\u0435 \u0434\u0430\u0432\u043d\u043e \u043d\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u043b\u043e\u0441\u044c";
+      signal.detail = latestHealthDate
+        ? `\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u044f\u044f \u0437\u0430\u043f\u0438\u0441\u044c: ${latestHealthDate}.`
+        : "\u041d\u0435\u0442 \u0437\u0430\u043f\u0438\u0441\u0435\u0439 \u043f\u043e \u0437\u0434\u043e\u0440\u043e\u0432\u044c\u044e.";
+    }
+    if (signal.id === "stale-work") {
+      signal.title = "\u0420\u0430\u0431\u043e\u0447\u0438\u0439 \u0440\u043e\u0441\u0442 \u0431\u0435\u0437 \u0441\u0432\u0435\u0436\u0438\u0445 \u0434\u0430\u043d\u043d\u044b\u0445";
+      signal.detail = latestWorkDate
+        ? `\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435: ${latestWorkDate}.`
+        : "\u041d\u0435\u0442 \u043f\u0440\u043e\u0435\u043a\u0442\u043e\u0432, \u043a\u0435\u0439\u0441\u043e\u0432 \u0438\u043b\u0438 \u043d\u0430\u0432\u044b\u043a\u043e\u0432.";
+    }
+    if (signal.id === "stale-experiments") {
+      signal.title = "\u042d\u043a\u0441\u043f\u0435\u0440\u0438\u043c\u0435\u043d\u0442\u044b \u0434\u0430\u0432\u043d\u043e \u043d\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u043b\u0438\u0441\u044c";
+      signal.detail = latestExperimentDate
+        ? `\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435: ${latestExperimentDate}.`
+        : "\u041d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u043f\u0440\u043e\u0432\u0435\u0440\u043e\u043a \u0433\u0438\u043f\u043e\u0442\u0435\u0437.";
+    }
+    if (signal.id === "stale-timeline") {
+      signal.title = "\u041a\u0430\u0440\u0442\u0430 \u0436\u0438\u0437\u043d\u0438 \u043d\u0435 \u0432\u0435\u0434\u0435\u0442\u0441\u044f";
+      signal.detail = latestEventDate
+        ? `\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u0441\u043e\u0431\u044b\u0442\u0438\u0435: ${latestEventDate}.`
+        : "\u041d\u0435\u0442 \u0437\u0430\u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0445 \u0432\u0430\u0436\u043d\u044b\u0445 \u0441\u043e\u0431\u044b\u0442\u0438\u0439.";
+    }
+  }
 
   return signals;
 }
@@ -399,6 +461,15 @@ function findCarRisks(cars: Car[], items: CarServiceItem[]): LifeCenterSignal[] 
   return signals.slice(0, 3);
 }
 
+function getSystemRiskNextStep(risks: LifeCenterSignal[]): LifeCenterSignal | null {
+  return (
+    risks.find((risk) => risk.id.startsWith("car-") && risk.level === "danger") ??
+    risks.find((risk) => risk.id === "health-gentle-mode") ??
+    risks.find((risk) => risk.id === "finance-negative-cashflow") ??
+    null
+  );
+}
+
 function getPersonalBoardNextStep(tasks: PersonalBoardTask[]): LifeCenterSignal | null {
   const activeTasks = tasks
     .filter((task) => !task.is_archived && !task.completed_at)
@@ -406,6 +477,11 @@ function getPersonalBoardNextStep(tasks: PersonalBoardTask[]): LifeCenterSignal 
   const task = activeTasks[0];
 
   if (!task) {
+    return null;
+  }
+
+  const isDueNow = Boolean(task.due_date && task.due_date <= getTodayKey());
+  if (task.priority !== "urgent" && !isDueNow) {
     return null;
   }
 

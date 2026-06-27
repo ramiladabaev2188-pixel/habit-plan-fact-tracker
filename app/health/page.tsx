@@ -76,6 +76,15 @@ export default async function HealthPage() {
         </Card>
       ) : null}
 
+      <Card className="section-panel border-info/30 bg-info/10">
+        <CardContent className="p-5 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Как считается энергия:</span>{" "}
+          энергия в экране “День” — быстрая отметка ритма, а журнал здоровья — более полный лог тела
+          (сон, боль, шаги, тренировки). В аналитике они объединяются по дате: если есть health log, он уточняет картину здоровья,
+          но не перезаписывает дневной комментарий.
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <Card className="section-panel">
           <CardHeader>

@@ -7,8 +7,10 @@
     "dev:lan": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -31,6 +33,9 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",

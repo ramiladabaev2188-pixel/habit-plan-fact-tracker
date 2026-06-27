@@ -46,7 +46,14 @@ export default async function DashboardPage({
 }) {
   const params = await searchParams;
   const [result, financeResult, healthResult, carResult, workResult, boardResult] = await Promise.all([
-    loadTrackerData(params.month, { includeGoals: true, includeWeeklyReviews: true, dailyNotesScope: "all" }),
+    loadTrackerData(params.month, {
+      includeGoals: true,
+      includeWeeklyReviews: true,
+      includeExperiments: true,
+      includeExperimentCheckins: true,
+      includeLifeEvents: true,
+      dailyNotesScope: "all"
+    }),
     loadFinancePage(),
     loadHealthPage(),
     loadCarPage(),
@@ -149,6 +156,13 @@ export default async function DashboardPage({
     workSkills: workResult.error ? [] : workResult.skills,
     personalBoardTasks: boardResult.error || !boardResult.data ? [] : boardResult.data.boardTasks
   });
+  const moduleWarnings = [
+    financeResult.error ? { title: "Финансы", detail: financeResult.error, href: "/finance" } : null,
+    healthResult.error ? { title: "Здоровье", detail: healthResult.error, href: "/health" } : null,
+    carResult.error ? { title: "Авто", detail: carResult.error, href: "/car" } : null,
+    workResult.error ? { title: "Работа", detail: workResult.error, href: "/work" } : null,
+    boardResult.error ? { title: "Личная доска", detail: boardResult.error, href: "/tasks" } : null
+  ].filter((item): item is { title: string; detail: string; href: string } => Boolean(item));
   const growthStats = lifeCenter.growth;
   const strongArea = growthStats.strongAreas[0] ?? growthStats.areas.filter((area) => area.planScore > 0).sort((a, b) => b.completion - a.completion)[0] ?? null;
   const weakArea = growthStats.weakAreas[0] ?? null;
@@ -213,6 +227,27 @@ export default async function DashboardPage({
 
       {shouldShowOnboarding ? (
         <OnboardingPanel profileName={profile?.name ?? ""} lifeAreas={lifeAreas} compact />
+      ) : null}
+
+      {moduleWarnings.length ? (
+        <section className="grid gap-3 md:grid-cols-2" aria-label="Предупреждения загрузки модулей">
+          {moduleWarnings.map((warning) => (
+            <Card key={warning.title} className="border-warning/40 bg-warning/10">
+              <CardContent className="flex items-start justify-between gap-4 p-4">
+                <div>
+                  <div className="font-semibold">Модуль «{warning.title}» не загрузился</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Dashboard продолжает работать, но данные этого контура сейчас не учитываются.
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{warning.detail}</p>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={warning.href}>Открыть</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
       ) : null}
 
       <section className="dashboard-hero-grid" aria-labelledby="focus-heading">

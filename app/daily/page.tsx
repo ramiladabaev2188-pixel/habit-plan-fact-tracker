@@ -20,7 +20,7 @@ export default async function DailyPage({
   searchParams: Promise<{ month?: string; date?: string }>;
 }) {
   const params = await searchParams;
-  const result = await loadTrackerData(params.month);
+  const result = await loadTrackerData(params.month, { includeGoals: true });
   const selectedDate = params.date ?? getTodayKey();
 
   if (!result.configured) {
@@ -35,7 +35,7 @@ export default async function DailyPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { selectedMonth, months, plans, facts, tasks, categories, dailyNotes } = result.data;
+  const { selectedMonth, months, plans, facts, tasks, categories, lifeAreas, goals, goalTasks, dailyNotes } = result.data;
 
   if (!selectedMonth) {
     return (
@@ -76,6 +76,14 @@ export default async function DailyPage({
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const dayContribution = calculateDayContribution({
+    items,
+    facts,
+    selectedDate,
+    lifeAreas,
+    goals,
+    goalTasks
+  });
 
   return (
     <div className="app-page app-page-with-rail daily-page">
@@ -167,16 +175,145 @@ export default async function DailyPage({
         ) : null}
       </div>
 
-      <DailyInput
-        monthId={selectedMonth.id}
-        date={selectedDate}
-        items={items}
-        yesterdayFacts={yesterdayFacts}
-        dailyNote={dayNote}
-        readOnly={selectedMonth.status === "closed"}
-      />
+      {items.length ? (
+        <>
+          <DailyInput
+            monthId={selectedMonth.id}
+            date={selectedDate}
+            items={items}
+            yesterdayFacts={yesterdayFacts}
+            dailyNote={dayNote}
+            readOnly={selectedMonth.status === "closed"}
+          />
+
+          <section className="grid gap-3 lg:grid-cols-3" aria-label="Сегодняшний вклад">
+            <div className="signal-panel lg:col-span-2">
+              <div className="font-semibold">Сегодняшний вклад</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Факт дня уже двигает не только месячный процент, но и сферы жизни с целями.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {dayContribution.areas.length ? (
+                  dayContribution.areas.map((area) => (
+                    <div key={area.id} className="rounded-md border bg-card/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{area.name}</span>
+                        <span className="text-sm text-muted-foreground">{formatPercent(area.completion)}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {formatScore(area.factScore)} / {formatScore(area.planScore)} баллов
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Пока нет факта по задачам, связанным со сферами.</p>
+                )}
+              </div>
+            </div>
+            <div className="signal-panel">
+              <div className="font-semibold">Цели и слабое место</div>
+              {dayContribution.goals.length ? (
+                <div className="mt-3 space-y-2">
+                  {dayContribution.goals.map((goal) => (
+                    <div key={goal.id} className="rounded-md border bg-card/70 p-3 text-sm">
+                      <div className="font-medium">{goal.title}</div>
+                      <div className="text-xs text-muted-foreground">Получила вклад через выполненные задачи</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">Свяжите задачи с целями, чтобы видеть вклад дня в цели.</p>
+              )}
+              {dayContribution.weakArea ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Слабое место дня: <span className="font-medium text-foreground">{dayContribution.weakArea.name}</span>.
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : (
+        <div className="signal-panel border-info/30 bg-info/10">
+          <div className="font-semibold">На выбранный день нет плана</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Чтобы день попал в аналитику, добавьте задачу или сгенерируйте план в календарной таблице.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href={`/planner?month=${selectedMonth.id}`}>Создать план</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/planner">Добавить задачу</Link>
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function calculateDayContribution({
+  items,
+  facts,
+  selectedDate,
+  lifeAreas,
+  goals,
+  goalTasks
+}: {
+  items: Array<{
+    task: { id: string; category_id: string | null };
+    plan: { planned_score: number };
+    category: { life_area_id?: string | null } | null;
+  }>;
+  facts: Array<{ task_id: string; date: string; actual_score: number }>;
+  selectedDate: string;
+  lifeAreas: Array<{ id: string; name: string }>;
+  goals: Array<{ id: string; title: string; status: string }>;
+  goalTasks: Array<{ goal_id: string; task_id: string }>;
+}) {
+  const factByTask = new Map(
+    facts
+      .filter((fact) => fact.date === selectedDate)
+      .map((fact) => [fact.task_id, fact.actual_score])
+  );
+  const areaById = new Map(lifeAreas.map((area) => [area.id, area]));
+  const areaStats = new Map<string, { id: string; name: string; factScore: number; planScore: number }>();
+  const progressedTaskIds = new Set<string>();
+
+  for (const item of items) {
+    const areaId = item.category?.life_area_id ?? null;
+    if (!areaId) continue;
+
+    const area = areaById.get(areaId);
+    if (!area) continue;
+
+    const factScore = factByTask.get(item.task.id) ?? 0;
+    if (factScore > 0) progressedTaskIds.add(item.task.id);
+
+    const stat = areaStats.get(areaId) ?? { id: areaId, name: area.name, factScore: 0, planScore: 0 };
+    stat.factScore += factScore;
+    stat.planScore += item.plan.planned_score;
+    areaStats.set(areaId, stat);
+  }
+
+  const linkedGoalIds = new Set(
+    goalTasks
+      .filter((relation) => progressedTaskIds.has(relation.task_id))
+      .map((relation) => relation.goal_id)
+  );
+  const linkedGoals = goals.filter((goal) => goal.status === "active" && linkedGoalIds.has(goal.id)).slice(0, 4);
+  const areas = [...areaStats.values()]
+    .map((area) => ({
+      ...area,
+      completion: area.planScore > 0 ? area.factScore / area.planScore : 0
+    }))
+    .sort((a, b) => b.factScore - a.factScore);
+
+  return {
+    areas,
+    goals: linkedGoals,
+    weakArea: areas.filter((area) => area.planScore > 0).sort((a, b) => a.completion - b.completion)[0] ?? null
+  };
 }
 
 function shiftDateKey(dateKey: string, days: number) {

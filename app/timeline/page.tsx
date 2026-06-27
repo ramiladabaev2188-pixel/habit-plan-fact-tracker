@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { deleteLifeEventAction, upsertLifeEventAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getTodayKey } from "@/lib/dates/month";
@@ -33,10 +35,13 @@ export default async function TimelinePage({
   searchParams: Promise<{ page?: string; lifeArea?: string }>;
 }) {
   const params = await searchParams;
+  const pageSize = 20;
+  const currentPage = Math.max(1, Number(params.page ?? 1) || 1);
   const [trackerResult, timelineResult] = await Promise.all([
     loadTrackerData(undefined, { includeGoals: true }),
     loadTimelinePage({
-      page: Number(params.page ?? 1),
+      page: currentPage,
+      pageSize,
       lifeAreaId: params.lifeArea
     })
   ]);
@@ -59,6 +64,7 @@ export default async function TimelinePage({
 
   const { lifeAreas, goals } = trackerResult.data;
   const { events, total } = timelineResult;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const today = getTodayKey();
 
   return (
@@ -178,11 +184,76 @@ export default async function TimelinePage({
                     </div>
                     <form action={deleteLifeEventAction}>
                       <input type="hidden" name="id" value={event.id} />
-                      <Button type="submit" variant="outline" size="sm">
+                      <ConfirmSubmitButton type="submit" variant="outline" size="sm" message="Удалить событие из карты жизни?">
                         Удалить
-                      </Button>
+                      </ConfirmSubmitButton>
                     </form>
                   </div>
+                  <details className="mt-4 rounded-md border border-border/80">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+                      Редактировать событие
+                    </summary>
+                    <form action={upsertLifeEventAction} className="grid gap-3 border-t border-border/80 p-3 lg:grid-cols-2">
+                      <input type="hidden" name="id" value={event.id} />
+                      <div className="space-y-2">
+                        <Label>Название</Label>
+                        <Input name="title" defaultValue={event.title} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Дата</Label>
+                        <Input name="eventDate" type="date" defaultValue={event.event_date} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Тип</Label>
+                        <Select name="type" defaultValue={event.type}>
+                          {Object.entries(eventTypeLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Важность</Label>
+                        <Select name="importance" defaultValue={String(event.importance)}>
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Сфера</Label>
+                        <Select name="lifeAreaId" defaultValue={event.life_area_id ?? ""}>
+                          <option value="">Без сферы</option>
+                          {lifeAreas.map((lifeArea) => (
+                            <option key={lifeArea.id} value={lifeArea.id}>
+                              {lifeArea.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Цель</Label>
+                        <Select name="goalId" defaultValue={event.goal_id ?? ""}>
+                          <option value="">Без цели</option>
+                          {goals.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.title}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-2 lg:col-span-2">
+                        <Label>Описание</Label>
+                        <Textarea name="description" defaultValue={event.description ?? ""} />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <Button type="submit">Сохранить событие</Button>
+                      </div>
+                    </form>
+                  </details>
                 </CardContent>
               </Card>
             );
@@ -196,9 +267,30 @@ export default async function TimelinePage({
         </Card>
       )}
 
-      {total > events.length ? (
-        <p className="text-sm text-muted-foreground">Показаны первые {events.length} из {total}. История уже грузится постранично.</p>
+      {total > pageSize ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.max(1, currentPage - 1))}>Назад</Link>
+          </Button>
+          <div className="text-sm text-muted-foreground">
+            Страница {currentPage} из {totalPages}
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href={createPageHref(params, Math.min(totalPages, currentPage + 1))}>Вперёд</Link>
+          </Button>
+        </div>
       ) : null}
     </div>
   );
+}
+
+function createPageHref(params: Record<string, string | undefined>, page: number) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key !== "page" && value) {
+      search.set(key, value);
+    }
+  }
+  search.set("page", String(Math.max(1, page)));
+  return `/timeline?${search.toString()}`;
 }

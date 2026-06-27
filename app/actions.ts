@@ -71,7 +71,7 @@ import {
   personalBoardTaskSchema,
   personalBoardTaskUpdateSchema
 } from "@/lib/validators/personal-board";
-import type { PlanningRuleMode } from "@/types/domain";
+import type { LifeEvent, PlanningRuleMode } from "@/types/domain";
 
 type DailyEntryInput = {
   taskId: string;
@@ -781,16 +781,36 @@ export async function approveMonthAction(formData: FormData) {
 export async function closeMonthAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const monthId = String(formData.get("monthId") ?? "");
+  const closedAt = new Date().toISOString();
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("id,title,year,month")
+    .eq("id", monthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (monthError || !month) {
+    throw new Error(monthError?.message ?? "Месяц не найден");
+  }
 
   const { error } = await supabase
     .from("months")
-    .update({ status: "closed" })
+    .update({ status: "closed", closed_at: closedAt })
     .eq("id", monthId)
     .eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
   }
+
+  await createUniqueLifeEvent(supabase, userId, {
+    title: `Месяц закрыт: ${month.title}`,
+    description: `Период ${month.month}.${month.year} переведен в архив.`,
+    eventDate: closedAt.slice(0, 10),
+    type: "milestone",
+    importance: 4
+  });
 
   revalidateTracker();
 }
@@ -1094,15 +1114,17 @@ export async function upsertExperimentAction(formData: FormData) {
   }
 
   if (result.data.status === "completed") {
-    await supabase.from("life_events").insert({
-        user_id: userId,
-        life_area_id: result.data.life_area_id,
-        title: `Завершен эксперимент: ${result.data.title}`,
-        description: result.data.conclusion ?? result.data.result_summary,
-        event_date: getTodayKey(),
-        type: "milestone",
-        importance: 4
-      });
+    await createUniqueLifeEvent(supabase, userId, {
+      lifeAreaId: result.data.life_area_id,
+      title: `Завершен эксперимент: ${result.data.title}`,
+      description: result.data.conclusion ?? result.data.result_summary,
+      eventDate: getTodayKey(),
+      type: "milestone",
+      importance: 4
+    });
+    revalidatePath("/experiments");
+    revalidatePath("/timeline");
+    return;
   }
 
   revalidatePath("/experiments");
@@ -1535,6 +1557,19 @@ export async function upsertFinanceGoalAction(formData: FormData) {
     throw new Error(error.message);
   }
 
+  if (parsed.currentAmount >= parsed.targetAmount) {
+    await createUniqueLifeEvent(supabase, userId, {
+      lifeAreaId: parsed.lifeAreaId || null,
+      goalId: parsed.goalId || null,
+      title: `Финансовая цель достигнута: ${parsed.title}`,
+      description: `Текущее значение ${parsed.currentAmount} из ${parsed.targetAmount}.`,
+      eventDate: getTodayKey(),
+      type: "finance",
+      importance: 4
+    });
+    revalidatePath("/timeline");
+  }
+
   revalidatePath("/finance");
 }
 
@@ -1728,10 +1763,11 @@ export async function addCarServiceLogAction(formData: FormData) {
   });
 
   const car = await assertCarOwner(supabase, userId, parsed.carId);
+  let loggedServiceItem: { id: string; name: string } | null = null;
   if (parsed.serviceItemId) {
     const { data: serviceItem, error: itemError } = await supabase
       .from("car_service_items")
-      .select("id")
+      .select("id,name")
       .eq("id", parsed.serviceItemId)
       .eq("car_id", parsed.carId)
       .eq("user_id", userId)
@@ -1740,6 +1776,7 @@ export async function addCarServiceLogAction(formData: FormData) {
     if (itemError || !serviceItem) {
       throw new Error(itemError?.message ?? "Узел обслуживания не найден");
     }
+    loggedServiceItem = serviceItem;
   }
 
   const { error } = await supabase.from("car_service_logs").insert({
@@ -1773,6 +1810,15 @@ export async function addCarServiceLogAction(formData: FormData) {
       })
       .eq("id", parsed.serviceItemId)
       .eq("user_id", userId);
+
+    await createUniqueLifeEvent(supabase, userId, {
+      title: `Обслуживание закрыто: ${loggedServiceItem?.name ?? "узел"}`,
+      description: `${car.name}: пробег ${parsed.mileage}.`,
+      eventDate: parsed.serviceDate,
+      type: "milestone",
+      importance: 3
+    });
+    revalidatePath("/timeline");
   }
 
   revalidatePath("/car");
@@ -1788,6 +1834,71 @@ export async function deleteCarServiceLogAction(formData: FormData) {
   }
 
   revalidatePath("/car");
+}
+
+export async function createCarServicePersonalTaskAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const serviceItemId = entityIdSchema.parse(formData.get("serviceItemId"));
+
+  const { data: serviceItem, error: serviceItemError } = await supabase
+    .from("car_service_items")
+    .select("*")
+    .eq("id", serviceItemId)
+    .eq("user_id", userId)
+    .single();
+
+  if (serviceItemError || !serviceItem) {
+    throw new Error(serviceItemError?.message ?? "Узел обслуживания не найден");
+  }
+
+  const car = await assertCarOwner(supabase, userId, serviceItem.car_id);
+  const { boardId, columnId } = await ensureDefaultPersonalBoard(supabase, userId);
+  const dueDate = getCarServiceDueDate(serviceItem.last_service_date, Number(serviceItem.interval_months ?? 0));
+  const kmLeft =
+    serviceItem.interval_km && serviceItem.last_service_mileage !== null
+      ? Number(serviceItem.last_service_mileage) + Number(serviceItem.interval_km) - Number(car.current_mileage)
+      : null;
+  const isOverdue = Boolean((dueDate && dueDate <= getTodayKey()) || (kmLeft !== null && kmLeft <= 0));
+  const title = `Обслужить авто: ${serviceItem.name}`;
+  const descriptionParts = [
+    `${car.name}: ${serviceItem.name}.`,
+    dueDate ? `Срок по дате: ${dueDate}.` : null,
+    kmLeft !== null ? `Осталось по пробегу: ${kmLeft} км.` : null,
+    serviceItem.comment ? `Комментарий: ${serviceItem.comment}` : null
+  ].filter(Boolean);
+
+  const { data: existingTask, error: existingError } = await supabase
+    .from("personal_board_tasks")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("board_id", boardId)
+    .eq("title", title)
+    .eq("is_archived", false)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (!existingTask) {
+    const { error } = await supabase.from("personal_board_tasks").insert({
+      user_id: userId,
+      board_id: boardId,
+      column_id: columnId,
+      title,
+      description: descriptionParts.join("\n"),
+      priority: isOverdue ? "urgent" : "high",
+      due_date: dueDate ?? (isOverdue ? getTodayKey() : null),
+      sort_order: Date.now()
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  revalidatePath("/car");
+  revalidatePath("/tasks");
 }
 
 export async function upsertWorkProjectAction(formData: FormData) {
@@ -1869,7 +1980,7 @@ export async function upsertWorkCaseAction(formData: FormData) {
     skills: parseTags(parsed.skills)
   };
 
-  const { error } = parsed.id
+  const result = parsed.id
     ? await supabase
         .from("work_cases")
         .update({
@@ -1884,12 +1995,23 @@ export async function upsertWorkCaseAction(formData: FormData) {
         })
         .eq("id", parsed.id)
         .eq("user_id", userId)
-    : await supabase.from("work_cases").insert(payload);
+        .select("id,title,result,conclusion")
+        .single()
+    : await supabase.from("work_cases").insert(payload).select("id,title,result,conclusion").single();
 
-  if (error) {
-    throw new Error(error.message);
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? "Рабочий кейс не сохранен");
   }
 
+  await createUniqueLifeEvent(supabase, userId, {
+    title: `Рабочий кейс: ${result.data.title}`,
+    description: result.data.conclusion ?? result.data.result ?? null,
+    eventDate: getTodayKey(),
+    type: "work",
+    importance: 4
+  });
+
+  revalidatePath("/timeline");
   revalidatePath("/work");
 }
 
@@ -2284,6 +2406,97 @@ const defaultPersonalBoardColumns = [
   { title: "На паузе", color: "#d9822b" },
   { title: "Готово", color: "#21835f" }
 ];
+
+async function ensureDefaultPersonalBoard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<{ boardId: string; columnId: string }> {
+  const { data: existingBoard, error: boardLookupError } = await supabase
+    .from("personal_boards")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("is_archived", false)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (boardLookupError) {
+    throw new Error(boardLookupError.message);
+  }
+
+  let boardId = existingBoard?.id;
+
+  if (!boardId) {
+    const { data: createdBoard, error: createBoardError } = await supabase
+      .from("personal_boards")
+      .insert({
+        user_id: userId,
+        title: "Личная доска",
+        description: "Автоматически создана для личных задач и обслуживания.",
+        is_default: true
+      })
+      .select("id")
+      .single();
+
+    if (createBoardError || !createdBoard) {
+      throw new Error(createBoardError?.message ?? "Не удалось создать личную доску");
+    }
+
+    boardId = createdBoard.id;
+  }
+
+  const { data: existingColumn, error: columnLookupError } = await supabase
+    .from("personal_board_columns")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("board_id", boardId)
+    .order("sort_order")
+    .limit(1)
+    .maybeSingle();
+
+  if (columnLookupError) {
+    throw new Error(columnLookupError.message);
+  }
+
+  if (existingColumn?.id) {
+    return { boardId, columnId: existingColumn.id };
+  }
+
+  const { data: createdColumns, error: createColumnsError } = await supabase
+    .from("personal_board_columns")
+    .insert(
+      defaultPersonalBoardColumns.map((column, index) => ({
+        user_id: userId,
+        board_id: boardId,
+        title: column.title,
+        color: column.color,
+        sort_order: index
+      }))
+    )
+    .select("id, sort_order");
+
+  if (createColumnsError || !createdColumns?.length) {
+    throw new Error(createColumnsError?.message ?? "Не удалось создать колонки личной доски");
+  }
+
+  const firstColumn = [...createdColumns].sort((a, b) => Number(a.sort_order) - Number(b.sort_order))[0];
+  return { boardId, columnId: firstColumn.id };
+}
+
+function getCarServiceDueDate(lastServiceDate: string | null, intervalMonths: number): string | null {
+  if (!lastServiceDate || !intervalMonths) {
+    return null;
+  }
+
+  const date = new Date(`${lastServiceDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  date.setMonth(date.getMonth() + intervalMonths);
+  return date.toISOString().slice(0, 10);
+}
 
 export async function createPersonalBoardAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
@@ -2864,7 +3077,82 @@ export async function upsertGoalAction(formData: FormData) {
   }
 
   await syncGoalTasks(goal.id, parsed.taskIds);
+  if (parsed.status === "completed") {
+    await createGoalCompletedEvent(supabase, userId, {
+      goalId: goal.id,
+      title: parsed.title,
+      lifeAreaId: parsed.lifeAreaId || null,
+      completedAt
+    });
+  }
   revalidateTracker();
+}
+
+async function createGoalCompletedEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  input: { goalId: string; title: string; lifeAreaId: string | null; completedAt: string | null }
+) {
+  const { data: existing, error: existingError } = await supabase
+    .from("life_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("goal_id", input.goalId)
+    .eq("type", "achievement")
+    .maybeSingle();
+
+  if (existingError || existing) {
+    return;
+  }
+
+  await supabase.from("life_events").insert({
+    user_id: userId,
+    life_area_id: input.lifeAreaId,
+    goal_id: input.goalId,
+    title: `Цель достигнута: ${input.title}`,
+    description: "Событие создано автоматически при переводе цели в статус «достигнута».",
+    event_date: (input.completedAt ?? new Date().toISOString()).slice(0, 10),
+    type: "achievement",
+    importance: 4
+  });
+}
+
+async function createUniqueLifeEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  input: {
+    title: string;
+    description?: string | null;
+    eventDate: string;
+    type: LifeEvent["type"];
+    importance: 1 | 2 | 3 | 4 | 5;
+    lifeAreaId?: string | null;
+    goalId?: string | null;
+  }
+) {
+  const { data: existing, error: existingError } = await supabase
+    .from("life_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("title", input.title)
+    .eq("event_date", input.eventDate)
+    .eq("type", input.type)
+    .maybeSingle();
+
+  if (existingError || existing) {
+    return;
+  }
+
+  await supabase.from("life_events").insert({
+    user_id: userId,
+    life_area_id: input.lifeAreaId ?? null,
+    goal_id: input.goalId ?? null,
+    title: input.title,
+    description: input.description ?? null,
+    event_date: input.eventDate,
+    type: input.type,
+    importance: input.importance
+  });
 }
 
 export async function archiveGoalAction(formData: FormData) {
@@ -3539,7 +3827,7 @@ async function assertCarOwner(
 ) {
   const { data: car, error } = await supabase
     .from("cars")
-    .select("id,current_mileage")
+    .select("id,name,current_mileage")
     .eq("id", carId)
     .eq("user_id", userId)
     .single();

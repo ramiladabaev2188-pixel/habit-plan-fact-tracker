@@ -181,7 +181,7 @@ export default async function GoalsPage({
             const linkedProgress = planScore > 0 ? factScore / planScore : 0;
             const progress = getGoalProgress(goal, linkedProgress);
             const lifeArea = goal.life_area_id ? lifeAreaMap.get(goal.life_area_id) ?? null : null;
-            const nextStep = getNextStep(linkedStats);
+            const nextStep = getNextStep(goal, linkedStats);
 
             return (
               <Card key={goal.id} className="section-panel">
@@ -214,7 +214,17 @@ export default async function GoalsPage({
                       <span className="font-semibold">{formatPercent(progress)}</span>
                     </div>
                     <Progress value={Math.min(progress, 1.2) * 100} />
-                    <div className="text-sm text-muted-foreground">
+                    {goal.progress_mode === "manual_value" ? (
+                      <div className="text-sm text-muted-foreground">
+                        Основной прогресс считается по ручному значению. Связанные задачи можно использовать как действия поддержки.
+                      </div>
+                    ) : null}
+                    {goal.progress_mode === "mixed" ? (
+                      <div className="text-xs text-muted-foreground">
+                        Смешанный режим: ручное значение и связанные задачи показаны отдельно, общий процент учитывает оба источника.
+                      </div>
+                    ) : null}
+                    <div className={goal.progress_mode === "manual_value" ? "hidden" : "text-sm text-muted-foreground"}>
                       {formatScore(factScore)} / {formatScore(planScore)} баллов по связанным задачам
                     </div>
                     {goal.target_value !== null ? (
@@ -344,7 +354,19 @@ function getGoalProgress(goal: Goal, linkedProgress: number) {
   return linkedProgress;
 }
 
-function getNextStep(linkedStats: TaskStat[]) {
+function getNextStep(goal: Goal, linkedStats: TaskStat[]) {
+  if (goal.progress_mode === "manual_value") {
+    if (goal.target_value !== null) {
+      return "Обновите текущее значение или добавьте конкретное действие, которое двигает эту цель.";
+    }
+
+    return "Добавьте целевое и текущее значение, чтобы ручной прогресс стал измеримым.";
+  }
+
+  if (goal.progress_mode === "mixed" && !linkedStats.length) {
+    return "Обновите ручное значение и добавьте хотя бы одну поддерживающую задачу.";
+  }
+
   if (!linkedStats.length) {
     return "Свяжите цель с задачами, чтобы система могла показать следующий шаг.";
   }
