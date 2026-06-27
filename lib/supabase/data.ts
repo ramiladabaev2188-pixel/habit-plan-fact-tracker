@@ -2,11 +2,20 @@ import type { User } from "@supabase/supabase-js";
 import { unstable_noStore as noStore } from "next/cache";
 import type {
   Category,
+  Car,
+  CarServiceItem,
+  CarServiceLog,
   DailyFact,
   DailyNote,
   DailyPlan,
+  Experiment,
+  ExperimentCheckin,
+  FinanceGoal,
+  FinanceSnapshot,
   Goal,
   GoalTask,
+  HealthLog,
+  LifeEvent,
   LifeArea,
   Month,
   Note,
@@ -14,7 +23,11 @@ import type {
   Task,
   TaskPlanningRule,
   TrackerData,
-  UserPreference
+  UserPreference,
+  WeeklyReview,
+  WorkCase,
+  WorkProject,
+  WorkSkill
 } from "@/types/domain";
 import { isSupabaseConfigured } from "./env";
 import { createClient } from "./server";
@@ -36,6 +49,7 @@ export type TrackerLoadResult =
 export type TrackerLoadOptions = {
   includeGoals?: boolean;
   includeNotes?: boolean;
+  includeWeeklyReviews?: boolean;
   dailyNotesScope?: "none" | "selected-month" | "all";
 };
 
@@ -56,6 +70,19 @@ export type GoalPageFilters = {
   status?: string;
   type?: string;
   priority?: string;
+  lifeAreaId?: string;
+};
+
+export type ExperimentPageFilters = {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  lifeAreaId?: string;
+};
+
+export type TimelinePageFilters = {
+  page?: number;
+  pageSize?: number;
   lifeAreaId?: string;
 };
 
@@ -92,6 +119,31 @@ export type HistoryLoadResult =
       error: string | null;
     };
 
+export type FinanceLoadResult = {
+  snapshots: FinanceSnapshot[];
+  goals: FinanceGoal[];
+  error: string | null;
+};
+
+export type HealthLoadResult = {
+  logs: HealthLog[];
+  error: string | null;
+};
+
+export type CarLoadResult = {
+  cars: Car[];
+  serviceItems: CarServiceItem[];
+  serviceLogs: CarServiceLog[];
+  error: string | null;
+};
+
+export type WorkLoadResult = {
+  projects: WorkProject[];
+  cases: WorkCase[];
+  skills: WorkSkill[];
+  error: string | null;
+};
+
 export async function loadTrackerData(
   monthId?: string,
   options: TrackerLoadOptions = {}
@@ -100,6 +152,7 @@ export async function loadTrackerData(
 
   const includeGoals = options.includeGoals ?? false;
   const includeNotes = options.includeNotes ?? false;
+  const includeWeeklyReviews = options.includeWeeklyReviews ?? false;
   const dailyNotesScope = options.dailyNotesScope ?? "selected-month";
 
   if (!isSupabaseConfigured()) {
@@ -189,7 +242,7 @@ export async function loadTrackerData(
     months[0] ??
     null;
 
-  const [plansResult, factsResult, dailyNotesResult, goalsResult, notesResult] = await Promise.all([
+  const [plansResult, factsResult, dailyNotesResult, goalsResult, notesResult, weeklyReviewsResult] = await Promise.all([
     selectedMonth
       ? supabase
           .from("daily_plans")
@@ -219,6 +272,9 @@ export async function loadTrackerData(
       : Promise.resolve({ data: [], error: null }),
     includeNotes
       ? supabase.from("notes").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    includeWeeklyReviews && selectedMonth
+      ? supabase.from("weekly_reviews").select("*").eq("user_id", user.id).eq("month_id", selectedMonth.id)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -228,6 +284,7 @@ export async function loadTrackerData(
     dailyNotesResult.error?.message ??
     goalsResult.error?.message ??
     notesResult.error?.message ??
+    weeklyReviewsResult.error?.message ??
     null;
 
   if (monthDataError) {
@@ -261,9 +318,97 @@ export async function loadTrackerData(
       notes: (notesResult.data ?? []).map(normalizeNote),
       planningRules: (planningRulesResult.data ?? []).map(normalizePlanningRule),
       dailyNotes: (dailyNotesResult.data ?? []).map(normalizeDailyNote),
+      weeklyReviews: (weeklyReviewsResult.data ?? []).map(normalizeWeeklyReview),
+      experiments: [],
+      experimentCheckins: [],
+      lifeEvents: [],
       preferences: preferencesResult.data ? normalizeUserPreference(preferencesResult.data) : null
     },
     error: null
+  };
+}
+
+export async function loadExperimentsPage(filters: ExperimentPageFilters) {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      experiments: [] as Experiment[],
+      checkins: [] as ExperimentCheckin[],
+      total: 0,
+      error: userError?.message ?? "РќСѓР¶РЅР° Р°РІС‚РѕСЂРёР·Р°С†РёСЏ"
+    };
+  }
+
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 12, 1), 50);
+  const page = Math.max(filters.page ?? 1, 1);
+  let query = supabase
+    .from("experiments")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (["draft", "active", "completed", "archived"].includes(filters.status ?? "")) {
+    query = query.eq("status", filters.status as "draft" | "active" | "completed" | "archived");
+  }
+  if (filters.lifeAreaId && filters.lifeAreaId !== "all") {
+    query = query.eq("life_area_id", filters.lifeAreaId);
+  }
+
+  const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
+  if (error) {
+    return { experiments: [] as Experiment[], checkins: [] as ExperimentCheckin[], total: 0, error: error.message };
+  }
+
+  const experiments = (data ?? []).map(normalizeExperiment);
+  const ids = experiments.map((experiment) => experiment.id);
+  const { data: checkins, error: checkinsError } = ids.length
+    ? await supabase.from("experiment_checkins").select("*").in("experiment_id", ids).order("date")
+    : { data: [], error: null };
+
+  return {
+    experiments,
+    checkins: (checkins ?? []).map(normalizeExperimentCheckin),
+    total: count ?? 0,
+    error: checkinsError?.message ?? null
+  };
+}
+
+export async function loadTimelinePage(filters: TimelinePageFilters) {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { events: [] as LifeEvent[], total: 0, error: userError?.message ?? "РќСѓР¶РЅР° Р°РІС‚РѕСЂРёР·Р°С†РёСЏ" };
+  }
+
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), 80);
+  const page = Math.max(filters.page ?? 1, 1);
+  let query = supabase
+    .from("life_events")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("event_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (filters.lifeAreaId && filters.lifeAreaId !== "all") {
+    query = query.eq("life_area_id", filters.lifeAreaId);
+  }
+
+  const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
+  return {
+    events: (data ?? []).map(normalizeLifeEvent),
+    total: count ?? 0,
+    error: error?.message ?? null
   };
 }
 
@@ -433,6 +578,158 @@ export async function loadHistoryPage(options: HistoryPageOptions = {}): Promise
   };
 }
 
+export async function loadFinancePage(): Promise<FinanceLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { snapshots: [], goals: [], error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const [snapshotsResult, goalsResult] = await Promise.all([
+    supabase
+      .from("finance_snapshots")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .limit(12),
+    supabase
+      .from("finance_goals")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+  ]);
+
+  const error = snapshotsResult.error?.message ?? goalsResult.error?.message ?? null;
+
+  return {
+    snapshots: (snapshotsResult.data ?? []).map(normalizeFinanceSnapshot),
+    goals: (goalsResult.data ?? []).map(normalizeFinanceGoal),
+    error
+  };
+}
+
+export async function loadHealthPage(): Promise<HealthLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { logs: [], error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const { data, error } = await supabase
+    .from("health_logs")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("date", { ascending: false })
+    .limit(60);
+
+  return {
+    logs: (data ?? []).map(normalizeHealthLog),
+    error: error?.message ?? null
+  };
+}
+
+export async function loadCarPage(): Promise<CarLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { cars: [], serviceItems: [], serviceLogs: [], error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const { data: carsData, error: carsError } = await supabase
+    .from("cars")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (carsError) {
+    return { cars: [], serviceItems: [], serviceLogs: [], error: carsError.message };
+  }
+
+  const cars = (carsData ?? []).map(normalizeCar);
+  const carIds = cars.map((car) => car.id);
+
+  if (!carIds.length) {
+    return { cars, serviceItems: [], serviceLogs: [], error: null };
+  }
+
+  const [itemsResult, logsResult] = await Promise.all([
+    supabase
+      .from("car_service_items")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("car_id", carIds)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("car_service_logs")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("car_id", carIds)
+      .order("service_date", { ascending: false })
+      .limit(40)
+  ]);
+
+  return {
+    cars,
+    serviceItems: (itemsResult.data ?? []).map(normalizeCarServiceItem),
+    serviceLogs: (logsResult.data ?? []).map(normalizeCarServiceLog),
+    error: itemsResult.error?.message ?? logsResult.error?.message ?? null
+  };
+}
+
+export async function loadWorkPage(): Promise<WorkLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { projects: [], cases: [], skills: [], error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const [projectsResult, casesResult, skillsResult] = await Promise.all([
+    supabase
+      .from("work_projects")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("work_cases")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("work_skills")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+  ]);
+
+  return {
+    projects: (projectsResult.data ?? []).map(normalizeWorkProject),
+    cases: (casesResult.data ?? []).map(normalizeWorkCase),
+    skills: (skillsResult.data ?? []).map(normalizeWorkSkill),
+    error: projectsResult.error?.message ?? casesResult.error?.message ?? skillsResult.error?.message ?? null
+  };
+}
+
 function sanitizeSearch(value?: string) {
   return (value ?? "").replace(/[,%()]/g, " ").trim().slice(0, 120);
 }
@@ -485,8 +782,14 @@ export function normalizeDailyFact(row: DailyFact): DailyFact {
   return {
     ...row,
     actual_value: Number(row.actual_value),
-    actual_score: Number(row.actual_score)
+    actual_score: Number(row.actual_score),
+    miss_reason: row.miss_reason ?? null,
+    miss_comment: row.miss_comment ?? null
   };
+}
+
+export function normalizeWeeklyReview(row: WeeklyReview): WeeklyReview {
+  return row;
 }
 
 export function normalizeGoal(row: Goal): Goal {
@@ -520,9 +823,103 @@ export function normalizeDailyNote(row: DailyNote): DailyNote {
   return row;
 }
 
+export function normalizeExperiment(row: Experiment): Experiment {
+  return row;
+}
+
+export function normalizeExperimentCheckin(row: ExperimentCheckin): ExperimentCheckin {
+  return {
+    ...row,
+    value: Number(row.value)
+  };
+}
+
+export function normalizeLifeEvent(row: LifeEvent): LifeEvent {
+  return row;
+}
+
+export function normalizeFinanceSnapshot(row: FinanceSnapshot): FinanceSnapshot {
+  return {
+    ...row,
+    income: Number(row.income),
+    required_expenses: Number(row.required_expenses),
+    optional_expenses: Number(row.optional_expenses),
+    savings: Number(row.savings),
+    debt_total: Number(row.debt_total),
+    investments: Number(row.investments)
+  };
+}
+
+export function normalizeFinanceGoal(row: FinanceGoal): FinanceGoal {
+  return {
+    ...row,
+    target_amount: Number(row.target_amount),
+    current_amount: Number(row.current_amount)
+  };
+}
+
+export function normalizeHealthLog(row: HealthLog): HealthLog {
+  return {
+    ...row,
+    weight: row.weight === null ? null : Number(row.weight),
+    sleep_hours: row.sleep_hours === null ? null : Number(row.sleep_hours),
+    energy: row.energy === null ? null : Number(row.energy),
+    pain_level: row.pain_level === null ? null : Number(row.pain_level),
+    steps: row.steps === null ? null : Number(row.steps)
+  };
+}
+
+export function normalizeCar(row: Car): Car {
+  return {
+    ...row,
+    year: row.year === null ? null : Number(row.year),
+    current_mileage: Number(row.current_mileage)
+  };
+}
+
+export function normalizeCarServiceItem(row: CarServiceItem): CarServiceItem {
+  return {
+    ...row,
+    last_service_mileage: row.last_service_mileage === null ? null : Number(row.last_service_mileage),
+    interval_months: row.interval_months === null ? null : Number(row.interval_months),
+    interval_km: row.interval_km === null ? null : Number(row.interval_km)
+  };
+}
+
+export function normalizeCarServiceLog(row: CarServiceLog): CarServiceLog {
+  return {
+    ...row,
+    mileage: Number(row.mileage),
+    cost: Number(row.cost)
+  };
+}
+
+export function normalizeWorkProject(row: WorkProject): WorkProject {
+  return row;
+}
+
+export function normalizeWorkCase(row: WorkCase): WorkCase {
+  return {
+    ...row,
+    skills: row.skills ?? []
+  };
+}
+
+export function normalizeWorkSkill(row: WorkSkill): WorkSkill {
+  return {
+    ...row,
+    level: Number(row.level),
+    target_level: Number(row.target_level)
+  };
+}
+
 export function normalizeUserPreference(row: UserPreference): UserPreference {
   return {
     ...row,
-    default_month_target: Number(row.default_month_target)
+    default_month_target: Number(row.default_month_target),
+    onboarding_completed_at: row.onboarding_completed_at ?? null,
+    onboarding_mode: row.onboarding_mode ?? "normal",
+    onboarding_blockers: row.onboarding_blockers ?? [],
+    desired_identity: row.desired_identity ?? null
   };
 }

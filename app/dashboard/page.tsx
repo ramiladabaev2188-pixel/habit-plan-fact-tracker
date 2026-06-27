@@ -1,14 +1,21 @@
 import { redirect } from "next/navigation";
 import type * as React from "react";
-import { Activity, AlertTriangle, BatteryMedium, CalendarCheck, Target, TrendingUp } from "lucide-react";
+import { Activity, AlertTriangle, BatteryMedium, CalendarCheck, CarFront, Flag, Sprout, Target, TrendingUp, WalletCards } from "lucide-react";
+import { completeOnboardingAction } from "@/app/actions";
 import { DashboardCumulativePlanFactChart, DashboardPlanFactChart } from "@/components/charts/dashboard-charts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { LocalReminders } from "@/components/shared/local-reminders";
 import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
+import { calculateGrowthStats } from "@/lib/growth";
 import {
   calculateCategoryStats,
   calculateDailyStats,
@@ -17,8 +24,9 @@ import {
   getForecastStatus
 } from "@/lib/metrics";
 import { getMainFocusTask, getRiskTasks } from "@/lib/recommendations";
+import { calculateFinanceSummary, calculateHealthSummary, carStatusLabels, formatMoney, getCarServiceState } from "@/lib/practical";
 import { calculateRhythmSnapshot, getRhythmMilestones } from "@/lib/rhythm";
-import { loadTrackerData } from "@/lib/supabase/data";
+import { loadCarPage, loadFinancePage, loadHealthPage, loadTrackerData } from "@/lib/supabase/data";
 import { cn, formatPercent, formatScore } from "@/lib/utils";
 
 const badgeVariantByLevel = {
@@ -35,7 +43,12 @@ export default async function DashboardPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const result = await loadTrackerData(params.month);
+  const [result, financeResult, healthResult, carResult] = await Promise.all([
+    loadTrackerData(params.month, { includeGoals: true, includeWeeklyReviews: true, dailyNotesScope: "all" }),
+    loadFinancePage(),
+    loadHealthPage(),
+    loadCarPage()
+  ]);
 
   if (!result.configured) {
     return <SetupNotice />;
@@ -49,11 +62,33 @@ export default async function DashboardPage({
     return <ErrorState message={result.error ?? "Неизвестная ошибка"} />;
   }
 
-  const { selectedMonth, plans, facts, tasks, categories, dailyNotes, preferences } = result.data;
+  const {
+    profile,
+    selectedMonth,
+    plans,
+    facts,
+    tasks,
+    categories,
+    lifeAreas,
+    goals,
+    dailyNotes,
+    weeklyReviews,
+    preferences
+  } = result.data;
+  const shouldShowOnboarding =
+    !preferences?.onboarding_completed_at &&
+    (lifeAreas.length === 0 || categories.length === 0 || tasks.length === 0 || goals.length === 0);
 
   if (!selectedMonth) {
     return (
-      <div>
+      <div className="space-y-5">
+        {shouldShowOnboarding ? (
+          <OnboardingPanel
+            profileName={profile?.name ?? ""}
+            lifeAreas={lifeAreas}
+            compact={false}
+          />
+        ) : null}
         <EmptyMonthState />
       </div>
     );
@@ -86,6 +121,44 @@ export default async function DashboardPage({
     forecastPercent: monthStats.forecastPercent,
     targetPercent: selectedMonth.target_percent
   });
+  const growthStats = calculateGrowthStats({ lifeAreas, categories, tasks, plans, facts });
+  const strongArea = growthStats.strongAreas[0] ?? growthStats.areas.filter((area) => area.planScore > 0).sort((a, b) => b.completion - a.completion)[0] ?? null;
+  const weakArea = growthStats.weakAreas[0] ?? null;
+  const activeGoals = goals.filter((goal) => goal.status === "active").slice(0, 3);
+  const topGoal = activeGoals[0] ?? null;
+  const topGoalProgress =
+    topGoal?.target_value && topGoal.target_value > 0
+      ? `${formatPercent((topGoal.current_value ?? 0) / topGoal.target_value)} · ${topGoal.current_value ?? 0} / ${topGoal.target_value}${topGoal.unit ? ` ${topGoal.unit}` : ""}`
+      : topGoal
+        ? "Прогресс через связанные задачи"
+        : "Добавьте 1-3 главные цели, чтобы dashboard вел к смыслу";
+  const latestWeeklyReview = weeklyReviews
+    .filter((review) => review.next_week_focus || review.lesson)
+    .sort((a, b) => b.week_number - a.week_number)[0] ?? null;
+  const financeSummary = financeResult.error ? null : calculateFinanceSummary(financeResult.snapshots, financeResult.goals);
+  const healthSummary = healthResult.error ? null : calculateHealthSummary(healthResult.logs);
+  const displayedEnergyAverage = rhythm.energyAverage ?? healthSummary?.averageEnergy ?? null;
+  const displayedEnergyEntries = rhythm.energyEntries || healthResult.logs.filter((log) => log.energy !== null).length;
+  const carRows = carResult.error
+    ? []
+    : carResult.serviceItems
+        .map((item) => {
+          const car = carResult.cars.find((candidate) => candidate.id === item.car_id);
+          return car ? { item, car, state: getCarServiceState(item, car) } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          const priority = { overdue: 0, soon: 1, unknown: 2, ok: 3 };
+          return priority[a!.state.status] - priority[b!.state.status];
+        });
+  const nextCarService = carRows[0] ?? null;
+  const nextStep = focus?.title
+    ? `Закрыть фокус: ${focus.title}`
+    : weakArea
+      ? `Поддержать сферу: ${weakArea.area.name}`
+      : latestWeeklyReview?.next_week_focus
+        ? latestWeeklyReview.next_week_focus
+        : "Сохранить ритм дня и внести факт";
   const yesterdayKey = shiftDateKey(getTodayKey(), -1);
   const yesterdayPlans = plans.filter((plan) => plan.date === yesterdayKey && plan.planned_score > 0);
   const yesterdayFactKeys = new Set(
@@ -106,7 +179,7 @@ export default async function DashboardPage({
       <div className="workspace-header">
         <div>
           <h1 className="workspace-title">Дашборд</h1>
-          <p className="workspace-subtitle">{selectedMonth.title}. Картина месяца, темп и то, что важнее всего закрыть сегодня.</p>
+          <p className="workspace-subtitle">{selectedMonth.title}. Как у меня сейчас дела и что самое важное сделать дальше.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">Общий факт {formatPercent(monthStats.monthCompletion)}</Badge>
@@ -115,6 +188,10 @@ export default async function DashboardPage({
           </Badge>
         </div>
       </div>
+
+      {shouldShowOnboarding ? (
+        <OnboardingPanel profileName={profile?.name ?? ""} lifeAreas={lifeAreas} compact />
+      ) : null}
 
       <section className="dashboard-hero-grid" aria-labelledby="focus-heading">
         <div className="dashboard-focus-stage">
@@ -196,6 +273,69 @@ export default async function DashboardPage({
         />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Главная сводка развития">
+        <ProductSignalCard
+          icon={<Sprout className="h-5 w-5" />}
+          title="Индекс развития"
+          value={growthStats.totalPlanScore > 0 ? formatPercent(growthStats.overallIndex) : "нет плана"}
+          detail={
+            weakArea
+              ? `Слабая сфера: ${weakArea.area.name}`
+              : strongArea
+                ? `Сильная сфера: ${strongArea.area.name}`
+                : "Свяжите категории со сферами"
+          }
+        />
+        <ProductSignalCard
+          icon={<Target className="h-5 w-5" />}
+          title="Следующий шаг"
+          value={nextStep}
+          detail="Что важнее всего сделать дальше"
+        />
+        <ProductSignalCard
+          icon={<Flag className="h-5 w-5" />}
+          title="Главные цели"
+          value={activeGoals.length ? `${activeGoals.length} активные` : "нет целей"}
+          detail={topGoal ? `${topGoal.title}: ${topGoalProgress}` : topGoalProgress}
+        />
+        <ProductSignalCard
+          icon={<AlertTriangle className="h-5 w-5" />}
+          title="Ближайшие риски"
+          value={riskTasks.length ? `${riskTasks.length} задач` : "нет явных рисков"}
+          detail={riskTasks[0] ? `${riskTasks[0].title}: темп ${formatPercent(riskTasks[0].forecastPercent)}` : "Начатые задачи держат целевой темп"}
+        />
+        <ProductSignalCard
+          icon={<WalletCards className="h-5 w-5" />}
+          title="Финансовый фокус"
+          value={financeSummary?.latest ? formatMoney(financeSummary.monthlyFreeCash) : "нет снимка"}
+          detail={
+            financeSummary?.latest
+              ? financeSummary.monthlyFreeCash >= 0
+                ? "Свободный поток положительный"
+                : "Расходы выше дохода, нужен контроль"
+              : "Добавьте финансовый снимок"
+          }
+        />
+        <ProductSignalCard
+          icon={<CarFront className="h-5 w-5" />}
+          title="Авто"
+          value={nextCarService ? nextCarService.item.name : "нет данных"}
+          detail={
+            nextCarService
+              ? `${nextCarService.car.name}: ${carStatusLabels[nextCarService.state.status]}`
+              : "Добавьте авто и узлы обслуживания"
+          }
+        />
+        {latestWeeklyReview ? (
+          <ProductSignalCard
+            icon={<CalendarCheck className="h-5 w-5" />}
+            title="Фокус недели"
+            value={latestWeeklyReview.next_week_focus || "Есть недельный вывод"}
+            detail={latestWeeklyReview.lesson ?? "Открыть недельный отчет"}
+          />
+        ) : null}
+      </section>
+
       <section className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]" aria-label="Ритм и достижения">
         <Card className="section-panel">
           <CardHeader className="flex flex-row items-start justify-between gap-3">
@@ -208,8 +348,8 @@ export default async function DashboardPage({
           <CardContent className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
             <div className="min-w-32 rounded-md bg-muted/55 p-4">
               <div className="text-xs text-muted-foreground">Средняя энергия</div>
-              <div className="data-value mt-1 text-3xl">{rhythm.energyAverage === null ? "—" : `${rhythm.energyAverage}/5`}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{rhythm.energyEntries} отметок</div>
+              <div className="data-value mt-1 text-3xl">{displayedEnergyAverage === null ? "—" : `${formatScore(displayedEnergyAverage)}/5`}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{displayedEnergyEntries} отметок</div>
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -364,5 +504,129 @@ function MetricCell({
       <div className="data-value mt-5 text-3xl">{value}</div>
       <div className="mt-2 text-sm leading-5 text-muted-foreground">{detail}</div>
     </div>
+  );
+}
+
+function ProductSignalCard({
+  icon,
+  title,
+  value,
+  detail
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <Card className="section-panel">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-3 text-muted-foreground">
+          <span className="text-sm font-medium">{title}</span>
+          <span className="text-signal">{icon}</span>
+        </div>
+        <div className="mt-4 line-clamp-2 text-2xl font-semibold tracking-tight">{value}</div>
+        <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OnboardingPanel({
+  profileName,
+  lifeAreas,
+  compact
+}: {
+  profileName: string;
+  lifeAreas: Array<{ id: string; name: string; color: string }>;
+  compact: boolean;
+}) {
+  const defaultAreaIds = lifeAreas.slice(0, 4).map((area) => area.id);
+
+  return (
+    <Card className="section-panel border-primary/30">
+      <CardHeader>
+        <CardTitle>Быстрая настройка личной системы</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Не блокирует приложение. Заполните один раз, чтобы dashboard, цели и стартовые задачи стали осмысленнее.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form action={completeOnboardingAction} className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="onboarding-name">Имя</Label>
+            <Input id="onboarding-name" name="name" defaultValue={profileName} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="onboarding-mode">Режим</Label>
+            <Select id="onboarding-mode" name="mode" defaultValue="normal">
+              <option value="recovery">Восстановление</option>
+              <option value="normal">Нормальный</option>
+              <option value="push">Рывок</option>
+            </Select>
+          </div>
+          <div className="space-y-2 lg:col-span-2">
+            <Label>Главные сферы жизни</Label>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {lifeAreas.map((area) => (
+                <label key={area.id} className="flex items-center gap-2 rounded-lg border border-border/80 bg-card p-3 text-sm">
+                  <input type="checkbox" name="lifeAreaIds" value={area.id} defaultChecked={defaultAreaIds.includes(area.id)} />
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: area.color }} />
+                  {area.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2 lg:col-span-2">
+            <Label htmlFor="desiredIdentity">Кем хочу стать через год</Label>
+            <Textarea
+              id="desiredIdentity"
+              name="desiredIdentity"
+              placeholder="Например: спокойный, сильный и системный человек, который держит слово перед собой"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="goal1">Главная цель 1</Label>
+            <Input id="goal1" name="goal1" required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="goal2">Главная цель 2</Label>
+            <Input id="goal2" name="goal2" />
+          </div>
+          {!compact ? (
+            <div className="space-y-2">
+              <Label htmlFor="goal3">Главная цель 3</Label>
+              <Input id="goal3" name="goal3" />
+            </div>
+          ) : (
+            <input type="hidden" name="goal3" value="" />
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="starterTemplate">Стартовый шаблон задач</Label>
+            <Select id="starterTemplate" name="starterTemplate" defaultValue="balanced">
+              <option value="balanced">Баланс</option>
+              <option value="health">Здоровье</option>
+              <option value="discipline">Дисциплина</option>
+              <option value="work">Работа</option>
+            </Select>
+          </div>
+          <div className="space-y-2 lg:col-span-2">
+            <Label>Что чаще всего мешает</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {["не хватает энергии", "не хватает времени", "забываю", "перегружаю план", "мешают другие дела", "нет условий"].map((blocker) => (
+                <label key={blocker} className="flex items-center gap-2 rounded-lg border border-border/80 bg-card p-3 text-sm">
+                  <input type="checkbox" name="blockers" value={blocker} />
+                  {blocker}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="lg:col-span-2">
+            <Button type="submit">Собрать стартовую систему</Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

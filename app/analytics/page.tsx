@@ -14,6 +14,7 @@ import {
   calculateTaskStats,
   getForecastStatus
 } from "@/lib/metrics";
+import { calculateFailureInsights } from "@/lib/reflection";
 import { getRiskTasks, getStrongTasks } from "@/lib/recommendations";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
@@ -68,6 +69,7 @@ export default async function AnalyticsPage({
   });
   const riskTasks = getRiskTasks(taskStats, 5, selectedMonth.target_percent);
   const overTasks = getStrongTasks(taskStats, 5, 1);
+  const failureInsights = calculateFailureInsights(plans, facts, tasks, today);
 
   return (
     <div className="space-y-5">
@@ -122,6 +124,41 @@ export default async function AnalyticsPage({
 
       <Card>
         <CardHeader>
+          <CardTitle>Почему срывается план</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-3">
+          <FailureList
+            title="Частые причины"
+            empty="Причины пока не отмечены. Когда факт ниже плана, можно выбрать мягкую причину без самообвинения."
+            items={failureInsights.topReasons.map((item) => ({
+              key: item.reason,
+              label: item.label,
+              value: `${item.count} раз`
+            }))}
+          />
+          <FailureList
+            title="Задачи, где чаще всего не хватает ритма"
+            empty="Пока нет повторяющихся срывов по задачам."
+            items={failureInsights.missedTasks.map((item) => ({
+              key: item.taskId,
+              label: item.title,
+              value: `${item.count} дн.`
+            }))}
+          />
+          <FailureList
+            title="Дни недели"
+            empty="Недостаточно данных по дням недели."
+            items={failureInsights.missedWeekdays.map((item) => ({
+              key: String(item.weekday),
+              label: item.label,
+              value: `${item.count} срывов`
+            }))}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Таблица задач</CardTitle>
         </CardHeader>
         <CardContent>
@@ -170,6 +207,35 @@ export default async function AnalyticsPage({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function FailureList({
+  title,
+  empty,
+  items
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ key: string; label: string; value: string }>;
+}) {
+  return (
+    <div className="space-y-3 rounded-md border p-4">
+      <div>
+        <div className="font-medium">{title}</div>
+        <p className="mt-1 text-xs text-muted-foreground">Нашли причину — теперь можно улучшить систему.</p>
+      </div>
+      {items.length ? (
+        items.map((item) => (
+          <div key={item.key} className="flex items-center justify-between gap-3 text-sm">
+            <span className="min-w-0 truncate">{item.label}</span>
+            <Badge variant="outline">{item.value}</Badge>
+          </div>
+        ))
+      ) : (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      )}
     </div>
   );
 }

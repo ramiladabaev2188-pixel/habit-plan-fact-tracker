@@ -200,6 +200,18 @@ export type Database = {
           actual_value: number;
           actual_score: number;
           note: string | null;
+          miss_reason:
+            | "no_time"
+            | "low_energy"
+            | "forgot"
+            | "not_important"
+            | "overloaded_plan"
+            | "health"
+            | "other_priorities"
+            | "no_conditions"
+            | "other"
+            | null;
+          miss_comment: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -211,6 +223,18 @@ export type Database = {
           actual_value: number;
           actual_score?: number;
           note?: string | null;
+          miss_reason?:
+            | "no_time"
+            | "low_energy"
+            | "forgot"
+            | "not_important"
+            | "overloaded_plan"
+            | "health"
+            | "other_priorities"
+            | "no_conditions"
+            | "other"
+            | null;
+          miss_comment?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -218,6 +242,586 @@ export type Database = {
           actual_value?: number;
           actual_score?: number;
           note?: string | null;
+          miss_reason?:
+            | "no_time"
+            | "low_energy"
+            | "forgot"
+            | "not_important"
+            | "overloaded_plan"
+            | "health"
+            | "other_priorities"
+            | "no_conditions"
+            | "other"
+            | null;
+          miss_comment?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      weekly_reviews: {
+        Row: {
+          id: string;
+          user_id: string;
+          month_id: string;
+          week_number: number;
+          start_date: string;
+          end_date: string;
+          worked_well: string | null;
+          didnt_work: string | null;
+          blockers: string | null;
+          repeat_next: string | null;
+          remove_next: string | null;
+          lesson: string | null;
+          next_week_focus: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          month_id: string;
+          week_number: number;
+          start_date: string;
+          end_date: string;
+          worked_well?: string | null;
+          didnt_work?: string | null;
+          blockers?: string | null;
+          repeat_next?: string | null;
+          remove_next?: string | null;
+          lesson?: string | null;
+          next_week_focus?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          week_number?: number;
+          start_date?: string;
+          end_date?: string;
+          worked_well?: string | null;
+          didnt_work?: string | null;
+          blockers?: string | null;
+          repeat_next?: string | null;
+          remove_next?: string | null;
+          lesson?: string | null;
+          next_week_focus?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      experiments: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          hypothesis: string | null;
+          life_area_id: string | null;
+          start_date: string;
+          end_date: string;
+          status: "draft" | "active" | "completed" | "archived";
+          success_metric: string | null;
+          result_summary: string | null;
+          conclusion: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          hypothesis?: string | null;
+          life_area_id?: string | null;
+          start_date: string;
+          end_date: string;
+          status?: "draft" | "active" | "completed" | "archived";
+          success_metric?: string | null;
+          result_summary?: string | null;
+          conclusion?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          hypothesis?: string | null;
+          life_area_id?: string | null;
+          start_date?: string;
+          end_date?: string;
+          status?: "draft" | "active" | "completed" | "archived";
+          success_metric?: string | null;
+          result_summary?: string | null;
+          conclusion?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      experiment_checkins: {
+        Row: {
+          id: string;
+          experiment_id: string;
+          date: string;
+          value: number;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          experiment_id: string;
+          date: string;
+          value?: number;
+          note?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          date?: string;
+          value?: number;
+          note?: string | null;
+        };
+        Relationships: [];
+      };
+      life_events: {
+        Row: {
+          id: string;
+          user_id: string;
+          life_area_id: string | null;
+          goal_id: string | null;
+          title: string;
+          description: string | null;
+          event_date: string;
+          type:
+            | "achievement"
+            | "milestone"
+            | "decision"
+            | "failure"
+            | "recovery"
+            | "purchase"
+            | "health"
+            | "finance"
+            | "work"
+            | "family"
+            | "faith"
+            | "custom";
+          importance: 1 | 2 | 3 | 4 | 5;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          life_area_id?: string | null;
+          goal_id?: string | null;
+          title: string;
+          description?: string | null;
+          event_date: string;
+          type?:
+            | "achievement"
+            | "milestone"
+            | "decision"
+            | "failure"
+            | "recovery"
+            | "purchase"
+            | "health"
+            | "finance"
+            | "work"
+            | "family"
+            | "faith"
+            | "custom";
+          importance?: 1 | 2 | 3 | 4 | 5;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          life_area_id?: string | null;
+          goal_id?: string | null;
+          title?: string;
+          description?: string | null;
+          event_date?: string;
+          type?:
+            | "achievement"
+            | "milestone"
+            | "decision"
+            | "failure"
+            | "recovery"
+            | "purchase"
+            | "health"
+            | "finance"
+            | "work"
+            | "family"
+            | "faith"
+            | "custom";
+          importance?: 1 | 2 | 3 | 4 | 5;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      finance_snapshots: {
+        Row: {
+          id: string;
+          user_id: string;
+          date: string;
+          income: number;
+          required_expenses: number;
+          optional_expenses: number;
+          savings: number;
+          debt_total: number;
+          investments: number;
+          comment: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          date: string;
+          income?: number;
+          required_expenses?: number;
+          optional_expenses?: number;
+          savings?: number;
+          debt_total?: number;
+          investments?: number;
+          comment?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          date?: string;
+          income?: number;
+          required_expenses?: number;
+          optional_expenses?: number;
+          savings?: number;
+          debt_total?: number;
+          investments?: number;
+          comment?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      finance_goals: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          target_amount: number;
+          current_amount: number;
+          due_date: string | null;
+          life_area_id: string | null;
+          goal_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          target_amount: number;
+          current_amount?: number;
+          due_date?: string | null;
+          life_area_id?: string | null;
+          goal_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          target_amount?: number;
+          current_amount?: number;
+          due_date?: string | null;
+          life_area_id?: string | null;
+          goal_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      health_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          date: string;
+          weight: number | null;
+          sleep_hours: number | null;
+          energy: number | null;
+          mood: string | null;
+          pain_level: number | null;
+          workout_done: boolean;
+          steps: number | null;
+          comment: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          date: string;
+          weight?: number | null;
+          sleep_hours?: number | null;
+          energy?: number | null;
+          mood?: string | null;
+          pain_level?: number | null;
+          workout_done?: boolean;
+          steps?: number | null;
+          comment?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          date?: string;
+          weight?: number | null;
+          sleep_hours?: number | null;
+          energy?: number | null;
+          mood?: string | null;
+          pain_level?: number | null;
+          workout_done?: boolean;
+          steps?: number | null;
+          comment?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      cars: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          brand: string | null;
+          model: string | null;
+          year: number | null;
+          current_mileage: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          brand?: string | null;
+          model?: string | null;
+          year?: number | null;
+          current_mileage?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          brand?: string | null;
+          model?: string | null;
+          year?: number | null;
+          current_mileage?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      car_service_items: {
+        Row: {
+          id: string;
+          user_id: string;
+          car_id: string;
+          name: string;
+          system:
+            | "engine"
+            | "transmission"
+            | "transfer_case"
+            | "front_diff"
+            | "rear_diff"
+            | "brakes"
+            | "spark_plugs"
+            | "filters"
+            | "antifreeze"
+            | "power_steering"
+            | "battery"
+            | "tires"
+            | "other";
+          last_service_date: string | null;
+          last_service_mileage: number | null;
+          interval_months: number | null;
+          interval_km: number | null;
+          comment: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          car_id: string;
+          name: string;
+          system:
+            | "engine"
+            | "transmission"
+            | "transfer_case"
+            | "front_diff"
+            | "rear_diff"
+            | "brakes"
+            | "spark_plugs"
+            | "filters"
+            | "antifreeze"
+            | "power_steering"
+            | "battery"
+            | "tires"
+            | "other";
+          last_service_date?: string | null;
+          last_service_mileage?: number | null;
+          interval_months?: number | null;
+          interval_km?: number | null;
+          comment?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          car_id?: string;
+          name?: string;
+          system?:
+            | "engine"
+            | "transmission"
+            | "transfer_case"
+            | "front_diff"
+            | "rear_diff"
+            | "brakes"
+            | "spark_plugs"
+            | "filters"
+            | "antifreeze"
+            | "power_steering"
+            | "battery"
+            | "tires"
+            | "other";
+          last_service_date?: string | null;
+          last_service_mileage?: number | null;
+          interval_months?: number | null;
+          interval_km?: number | null;
+          comment?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      car_service_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          car_id: string;
+          service_item_id: string | null;
+          service_date: string;
+          mileage: number;
+          cost: number;
+          comment: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          car_id: string;
+          service_item_id?: string | null;
+          service_date: string;
+          mileage: number;
+          cost?: number;
+          comment?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          service_item_id?: string | null;
+          service_date?: string;
+          mileage?: number;
+          cost?: number;
+          comment?: string | null;
+        };
+        Relationships: [];
+      };
+      work_projects: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          status: "active" | "paused" | "completed" | "archived";
+          start_date: string | null;
+          due_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          status?: "active" | "paused" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          status?: "active" | "paused" | "completed" | "archived";
+          start_date?: string | null;
+          due_date?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      work_cases: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          problem: string | null;
+          actions: string | null;
+          result: string | null;
+          metrics_before: string | null;
+          metrics_after: string | null;
+          conclusion: string | null;
+          skills: string[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          problem?: string | null;
+          actions?: string | null;
+          result?: string | null;
+          metrics_before?: string | null;
+          metrics_after?: string | null;
+          conclusion?: string | null;
+          skills?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          problem?: string | null;
+          actions?: string | null;
+          result?: string | null;
+          metrics_before?: string | null;
+          metrics_after?: string | null;
+          conclusion?: string | null;
+          skills?: string[];
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      work_skills: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          level: number;
+          target_level: number;
+          comment: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          level?: number;
+          target_level?: number;
+          comment?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          level?: number;
+          target_level?: number;
+          comment?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -416,6 +1020,10 @@ export type Database = {
           risk_alerts_enabled: boolean;
           theme: "light" | "dark" | "system";
           default_month_target: number;
+          onboarding_completed_at: string | null;
+          onboarding_mode: "recovery" | "normal" | "push";
+          onboarding_blockers: string[];
+          desired_identity: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -427,6 +1035,10 @@ export type Database = {
           risk_alerts_enabled?: boolean;
           theme?: "light" | "dark" | "system";
           default_month_target?: number;
+          onboarding_completed_at?: string | null;
+          onboarding_mode?: "recovery" | "normal" | "push";
+          onboarding_blockers?: string[];
+          desired_identity?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -436,6 +1048,10 @@ export type Database = {
           risk_alerts_enabled?: boolean;
           theme?: "light" | "dark" | "system";
           default_month_target?: number;
+          onboarding_completed_at?: string | null;
+          onboarding_mode?: "recovery" | "normal" | "push";
+          onboarding_blockers?: string[];
+          desired_identity?: string | null;
           updated_at?: string;
         };
         Relationships: [];

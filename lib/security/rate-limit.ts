@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 type RateLimitOptions = {
-  scope: "auth-signin" | "auth-signup" | "team-invite" | "data-import" | "data-export";
+  scope: "auth-signin" | "auth-signup" | "team-invite" | "data-import" | "data-export" | "password-change";
   identifier: string;
   maxRequests: number;
   windowSeconds: number;

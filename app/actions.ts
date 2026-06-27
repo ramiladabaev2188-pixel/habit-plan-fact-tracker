@@ -16,16 +16,28 @@ import { createClient } from "@/lib/supabase/server";
 import {
   categorySchema,
   categoryUpdateSchema,
+  carSchema,
+  carServiceItemSchema,
+  carServiceLogSchema,
   copyMonthTemplateSchema,
   dateKeySchema,
   dailyNoteSchema,
   entityIdSchema,
+  experimentCheckinSchema,
+  experimentSchema,
+  financeGoalSchema,
+  financeSnapshotSchema,
   factValueSchema,
   goalSchema,
+  healthLogSchema,
   importPreviewSchema,
+  lifeEventSchema,
   lifeAreaSchema,
+  missReasonSchema,
   monthSchema,
   noteSchema,
+  onboardingSchema,
+  passwordChangeSchema,
   planGenerationSchema,
   planValueSchema,
   preferencesSchema,
@@ -45,7 +57,11 @@ import {
   teamBoardCommentSchema,
   teamBoardSchema,
   teamBoardTaskMoveSchema,
-  teamBoardTaskSchema
+  teamBoardTaskSchema,
+  weeklyReviewSchema,
+  workCaseSchema,
+  workProjectSchema,
+  workSkillSchema
 } from "@/lib/validators/tracker";
 import {
   personalBoardCommentSchema,
@@ -61,6 +77,8 @@ type DailyEntryInput = {
   taskId: string;
   actualValue: number | null;
   note?: string;
+  missReason?: string;
+  missComment?: string;
 };
 
 type SaveDailyFactsInput = {
@@ -879,7 +897,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     taskIds.length
       ? supabase
           .from("daily_plans")
-          .select("task_id")
+          .select("task_id, planned_value")
           .eq("month_id", month.id)
           .eq("date", parsedDate.data)
           .in("task_id", taskIds)
@@ -892,6 +910,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
 
   const taskWeights = new Map((tasks ?? []).map((task) => [task.id, Number(task.weight)]));
   const plannedTaskIds = new Set((plans ?? []).map((plan) => plan.task_id));
+  const plannedValues = new Map((plans ?? []).map((plan) => [plan.task_id, Number(plan.planned_value)]));
 
   if (taskWeights.size !== taskIds.length || plannedTaskIds.size !== taskIds.length) {
     return { ok: false, error: "Факт можно внести только для задачи с планом на выбранный день." };
@@ -901,6 +920,9 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     .filter((entry): entry is DailyEntryInput & { actualValue: number } => typeof entry.actualValue === "number")
     .map((entry) => {
     const actualValue = factValueSchema.parse(entry.actualValue);
+    const plannedValue = plannedValues.get(entry.taskId) ?? 0;
+    const isBelowPlan = actualValue < plannedValue;
+    const parsedReason = entry.missReason ? missReasonSchema.safeParse(entry.missReason) : null;
 
     return {
       month_id: input.monthId,
@@ -908,7 +930,9 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
       date: parsedDate.data,
       actual_value: actualValue,
       actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
-      note: entry.note?.trim() || null
+      note: entry.note?.trim() || null,
+      miss_reason: isBelowPlan && parsedReason?.success ? parsedReason.data : null,
+      miss_comment: isBelowPlan ? entry.missComment?.trim() || null : null
     };
     });
 
@@ -964,6 +988,245 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
   return { ok: true };
 }
 
+export async function upsertWeeklyReviewAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = weeklyReviewSchema.parse({
+    monthId: formData.get("monthId"),
+    weekNumber: formData.get("weekNumber"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    workedWell: formData.get("workedWell"),
+    didntWork: formData.get("didntWork"),
+    blockers: formData.get("blockers"),
+    repeatNext: formData.get("repeatNext"),
+    removeNext: formData.get("removeNext"),
+    lesson: formData.get("lesson"),
+    nextWeekFocus: formData.get("nextWeekFocus")
+  });
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("id")
+    .eq("id", parsed.monthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (monthError || !month) {
+    throw new Error(monthError?.message ?? "РњРµСЃСЏС† РЅРµ РЅР°Р№РґРµРЅ");
+  }
+
+  const { error } = await supabase.from("weekly_reviews").upsert(
+    {
+      user_id: userId,
+      month_id: parsed.monthId,
+      week_number: parsed.weekNumber,
+      start_date: parsed.startDate,
+      end_date: parsed.endDate,
+      worked_well: parsed.workedWell || null,
+      didnt_work: parsed.didntWork || null,
+      blockers: parsed.blockers || null,
+      repeat_next: parsed.repeatNext || null,
+      remove_next: parsed.removeNext || null,
+      lesson: parsed.lesson || null,
+      next_week_focus: parsed.nextWeekFocus || null
+    },
+    { onConflict: "user_id,month_id,week_number" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/weekly");
+  revalidatePath("/monthly-report");
+}
+
+export async function upsertExperimentAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = experimentSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    hypothesis: formData.get("hypothesis"),
+    lifeAreaId: formData.get("lifeAreaId"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    status: formData.get("status") || "draft",
+    successMetric: formData.get("successMetric"),
+    resultSummary: formData.get("resultSummary"),
+    conclusion: formData.get("conclusion")
+  });
+
+  const payload = {
+    user_id: userId,
+    title: parsed.title,
+    hypothesis: parsed.hypothesis || null,
+    life_area_id: parsed.lifeAreaId || null,
+    start_date: parsed.startDate,
+    end_date: parsed.endDate,
+    status: parsed.status,
+    success_metric: parsed.successMetric || null,
+    result_summary: parsed.resultSummary || null,
+    conclusion: parsed.conclusion || null
+  };
+
+  const result = parsed.id
+    ? await supabase
+        .from("experiments")
+        .update({
+          title: payload.title,
+          hypothesis: payload.hypothesis,
+          life_area_id: payload.life_area_id,
+          start_date: payload.start_date,
+          end_date: payload.end_date,
+          status: payload.status,
+          success_metric: payload.success_metric,
+          result_summary: payload.result_summary,
+          conclusion: payload.conclusion
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+        .select("*")
+        .single()
+    : await supabase.from("experiments").insert(payload).select("*").single();
+
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? "Р­РєСЃРїРµСЂРёРјРµРЅС‚ РЅРµ СЃРѕС…СЂР°РЅРµРЅ");
+  }
+
+  if (result.data.status === "completed") {
+    await supabase.from("life_events").insert({
+        user_id: userId,
+        life_area_id: result.data.life_area_id,
+        title: `Р—Р°РІРµСЂС€РµРЅ СЌРєСЃРїРµСЂРёРјРµРЅС‚: ${result.data.title}`,
+        description: result.data.conclusion ?? result.data.result_summary,
+        event_date: getTodayKey(),
+        type: "milestone",
+        importance: 4
+      });
+  }
+
+  revalidatePath("/experiments");
+  revalidatePath("/timeline");
+}
+
+export async function archiveExperimentAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const experimentId = entityIdSchema.parse(formData.get("id"));
+
+  const { error } = await supabase
+    .from("experiments")
+    .update({ status: "archived" })
+    .eq("id", experimentId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/experiments");
+}
+
+export async function saveExperimentCheckinAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = experimentCheckinSchema.parse({
+    experimentId: formData.get("experimentId"),
+    date: formData.get("date"),
+    value: formData.get("value"),
+    note: formData.get("note")
+  });
+
+  const { data: experiment, error: experimentError } = await supabase
+    .from("experiments")
+    .select("id")
+    .eq("id", parsed.experimentId)
+    .eq("user_id", userId)
+    .single();
+
+  if (experimentError || !experiment) {
+    throw new Error(experimentError?.message ?? "Р­РєСЃРїРµСЂРёРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ");
+  }
+
+  const { error } = await supabase.from("experiment_checkins").upsert(
+    {
+      experiment_id: parsed.experimentId,
+      date: parsed.date,
+      value: parsed.value,
+      note: parsed.note || null
+    },
+    { onConflict: "experiment_id,date" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/experiments");
+}
+
+export async function upsertLifeEventAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = lifeEventSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    description: formData.get("description"),
+    lifeAreaId: formData.get("lifeAreaId"),
+    goalId: formData.get("goalId"),
+    eventDate: formData.get("eventDate"),
+    type: formData.get("type") || "custom",
+    importance: formData.get("importance") || 3
+  });
+
+  const payload = {
+    user_id: userId,
+    life_area_id: parsed.lifeAreaId || null,
+    goal_id: parsed.goalId || null,
+    title: parsed.title,
+    description: parsed.description || null,
+    event_date: parsed.eventDate,
+    type: parsed.type,
+    importance: parsed.importance as 1 | 2 | 3 | 4 | 5
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("life_events")
+        .update({
+          life_area_id: payload.life_area_id,
+          goal_id: payload.goal_id,
+          title: payload.title,
+          description: payload.description,
+          event_date: payload.event_date,
+          type: payload.type,
+          importance: payload.importance
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("life_events").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/timeline");
+}
+
+export async function deleteLifeEventAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const eventId = entityIdSchema.parse(formData.get("id"));
+
+  const { error } = await supabase
+    .from("life_events")
+    .delete()
+    .eq("id", eventId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/timeline");
+}
+
 export async function updateSettingsAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = settingsSchema.parse({
@@ -1000,6 +1263,49 @@ export async function updateSettingsAction(formData: FormData) {
   revalidateTracker();
 }
 
+export async function changePasswordAction(formData: FormData) {
+  const { supabase, user } = await requireUser();
+  const parsed = passwordChangeSchema.parse({
+    currentPassword: formData.get("currentPassword"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword")
+  });
+
+  if (!user.email) {
+    throw new Error("У аккаунта нет email для проверки текущего пароля");
+  }
+
+  const rateLimit = await consumeRateLimit({
+    scope: "password-change",
+    identifier: user.id,
+    maxRequests: 5,
+    windowSeconds: 300
+  });
+
+  if (!rateLimit.allowed) {
+    throw new Error(getRateLimitMessage(rateLimit.retryAfter));
+  }
+
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: parsed.currentPassword
+  });
+
+  if (verifyError) {
+    throw new Error("Текущий пароль указан неверно");
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.newPassword
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/settings");
+}
+
 export async function updatePreferencesAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = preferencesSchema.parse({
@@ -1029,6 +1335,516 @@ export async function updatePreferencesAction(formData: FormData) {
   }
 
   revalidateTracker();
+}
+
+export async function completeOnboardingAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = onboardingSchema.parse({
+    name: formData.get("name"),
+    lifeAreaIds: formData.getAll("lifeAreaIds"),
+    desiredIdentity: formData.get("desiredIdentity"),
+    goal1: formData.get("goal1"),
+    goal2: formData.get("goal2"),
+    goal3: formData.get("goal3"),
+    blockers: formData.getAll("blockers"),
+    mode: formData.get("mode") || "normal",
+    starterTemplate: formData.get("starterTemplate") || "balanced"
+  });
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ name: parsed.name })
+    .eq("id", userId);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  const validLifeAreaIds = await getOwnedLifeAreaIds(supabase, userId, parsed.lifeAreaIds);
+  const primaryLifeAreaId = validLifeAreaIds[0] ?? null;
+
+  const { error: preferencesError } = await supabase.from("user_preferences").upsert(
+    {
+      user_id: userId,
+      onboarding_completed_at: new Date().toISOString(),
+      onboarding_mode: parsed.mode,
+      onboarding_blockers: parsed.blockers,
+      desired_identity: parsed.desiredIdentity
+    },
+    { onConflict: "user_id" }
+  );
+
+  if (preferencesError) {
+    throw new Error(preferencesError.message);
+  }
+
+  const goals = [parsed.goal1, parsed.goal2, parsed.goal3].filter((title): title is string => Boolean(title?.trim()));
+  if (goals.length) {
+    const { error: goalsError } = await supabase.from("goals").insert(
+      goals.map((title) => ({
+        user_id: userId,
+        life_area_id: primaryLifeAreaId,
+        title,
+        description: null,
+        type: "long_term",
+        status: "active",
+        priority: "high",
+        why_text: "Создано на стартовой настройке продукта",
+        desired_identity: parsed.desiredIdentity,
+        progress_mode: "linked_tasks"
+      }))
+    );
+
+    if (goalsError) {
+      throw new Error(goalsError.message);
+    }
+  }
+
+  const { count: taskCount, error: taskCountError } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (taskCountError) {
+    throw new Error(taskCountError.message);
+  }
+
+  if ((taskCount ?? 0) === 0) {
+    const starter = getStarterTemplate(parsed.starterTemplate);
+    const { data: category, error: categoryError } = await supabase
+      .from("categories")
+      .insert({
+        user_id: userId,
+        life_area_id: primaryLifeAreaId,
+        name: starter.categoryName,
+        color: starter.color,
+        sort_order: 1
+      })
+      .select("id")
+      .single();
+
+    if (categoryError || !category) {
+      throw new Error(categoryError?.message ?? "Стартовая категория не создана");
+    }
+
+    const { error: tasksError } = await supabase.from("tasks").insert(
+      starter.tasks.map((task) => ({
+        user_id: userId,
+        category_id: category.id,
+        title: task.title,
+        description: task.description,
+        weight: task.weight,
+        is_active: true
+      }))
+    );
+
+    if (tasksError) {
+      throw new Error(tasksError.message);
+    }
+  }
+
+  revalidateTracker();
+  redirect("/dashboard?onboarding=done");
+}
+
+export async function upsertFinanceSnapshotAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = financeSnapshotSchema.parse({
+    date: formData.get("date"),
+    income: formData.get("income"),
+    requiredExpenses: formData.get("requiredExpenses"),
+    optionalExpenses: formData.get("optionalExpenses"),
+    savings: formData.get("savings"),
+    debtTotal: formData.get("debtTotal"),
+    investments: formData.get("investments"),
+    comment: formData.get("comment")
+  });
+
+  const { error } = await supabase.from("finance_snapshots").upsert(
+    {
+      user_id: userId,
+      date: parsed.date,
+      income: parsed.income,
+      required_expenses: parsed.requiredExpenses,
+      optional_expenses: parsed.optionalExpenses,
+      savings: parsed.savings,
+      debt_total: parsed.debtTotal,
+      investments: parsed.investments,
+      comment: parsed.comment || null
+    },
+    { onConflict: "user_id,date" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/finance");
+}
+
+export async function upsertFinanceGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = financeGoalSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    targetAmount: formData.get("targetAmount"),
+    currentAmount: formData.get("currentAmount"),
+    dueDate: formData.get("dueDate"),
+    lifeAreaId: formData.get("lifeAreaId"),
+    goalId: formData.get("goalId")
+  });
+
+  const payload = {
+    user_id: userId,
+    title: parsed.title,
+    target_amount: parsed.targetAmount,
+    current_amount: parsed.currentAmount,
+    due_date: parsed.dueDate || null,
+    life_area_id: parsed.lifeAreaId || null,
+    goal_id: parsed.goalId || null
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("finance_goals")
+        .update({
+          title: payload.title,
+          target_amount: payload.target_amount,
+          current_amount: payload.current_amount,
+          due_date: payload.due_date,
+          life_area_id: payload.life_area_id,
+          goal_id: payload.goal_id
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("finance_goals").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/finance");
+}
+
+export async function upsertHealthLogAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = healthLogSchema.parse({
+    date: formData.get("date"),
+    weight: formData.get("weight"),
+    sleepHours: formData.get("sleepHours"),
+    energy: formData.get("energy"),
+    mood: formData.get("mood"),
+    painLevel: formData.get("painLevel"),
+    workoutDone: formData.has("workoutDone"),
+    steps: formData.get("steps"),
+    comment: formData.get("comment")
+  });
+
+  const { error } = await supabase.from("health_logs").upsert(
+    {
+      user_id: userId,
+      date: parsed.date,
+      weight: parsed.weight || null,
+      sleep_hours: parsed.sleepHours || null,
+      energy: parsed.energy || null,
+      mood: parsed.mood || null,
+      pain_level: parsed.painLevel === "" ? null : parsed.painLevel ?? null,
+      workout_done: parsed.workoutDone,
+      steps: parsed.steps || null,
+      comment: parsed.comment || null
+    },
+    { onConflict: "user_id,date" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/health");
+}
+
+export async function upsertCarAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = carSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    name: formData.get("name"),
+    brand: formData.get("brand"),
+    model: formData.get("model"),
+    year: formData.get("year"),
+    currentMileage: formData.get("currentMileage")
+  });
+
+  const payload = {
+    user_id: userId,
+    name: parsed.name,
+    brand: parsed.brand || null,
+    model: parsed.model || null,
+    year: parsed.year || null,
+    current_mileage: parsed.currentMileage
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("cars")
+        .update({
+          name: payload.name,
+          brand: payload.brand,
+          model: payload.model,
+          year: payload.year,
+          current_mileage: payload.current_mileage
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("cars").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/car");
+}
+
+export async function upsertCarServiceItemAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = carServiceItemSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    carId: formData.get("carId"),
+    name: formData.get("name"),
+    system: formData.get("system"),
+    lastServiceDate: formData.get("lastServiceDate"),
+    lastServiceMileage: formData.get("lastServiceMileage"),
+    intervalMonths: formData.get("intervalMonths"),
+    intervalKm: formData.get("intervalKm"),
+    comment: formData.get("comment")
+  });
+
+  await assertCarOwner(supabase, userId, parsed.carId);
+
+  const payload = {
+    user_id: userId,
+    car_id: parsed.carId,
+    name: parsed.name,
+    system: parsed.system,
+    last_service_date: parsed.lastServiceDate || null,
+    last_service_mileage: parsed.lastServiceMileage === "" ? null : parsed.lastServiceMileage ?? null,
+    interval_months: parsed.intervalMonths === "" ? null : parsed.intervalMonths ?? null,
+    interval_km: parsed.intervalKm === "" ? null : parsed.intervalKm ?? null,
+    comment: parsed.comment || null
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("car_service_items")
+        .update({
+          car_id: payload.car_id,
+          name: payload.name,
+          system: payload.system,
+          last_service_date: payload.last_service_date,
+          last_service_mileage: payload.last_service_mileage,
+          interval_months: payload.interval_months,
+          interval_km: payload.interval_km,
+          comment: payload.comment
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("car_service_items").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/car");
+}
+
+export async function addCarServiceLogAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = carServiceLogSchema.parse({
+    carId: formData.get("carId"),
+    serviceItemId: formData.get("serviceItemId"),
+    serviceDate: formData.get("serviceDate"),
+    mileage: formData.get("mileage"),
+    cost: formData.get("cost"),
+    comment: formData.get("comment")
+  });
+
+  const car = await assertCarOwner(supabase, userId, parsed.carId);
+  if (parsed.serviceItemId) {
+    const { data: serviceItem, error: itemError } = await supabase
+      .from("car_service_items")
+      .select("id")
+      .eq("id", parsed.serviceItemId)
+      .eq("car_id", parsed.carId)
+      .eq("user_id", userId)
+      .single();
+
+    if (itemError || !serviceItem) {
+      throw new Error(itemError?.message ?? "Узел обслуживания не найден");
+    }
+  }
+
+  const { error } = await supabase.from("car_service_logs").insert({
+    user_id: userId,
+    car_id: parsed.carId,
+    service_item_id: parsed.serviceItemId || null,
+    service_date: parsed.serviceDate,
+    mileage: parsed.mileage,
+    cost: parsed.cost,
+    comment: parsed.comment || null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (parsed.mileage > Number(car.current_mileage)) {
+    await supabase
+      .from("cars")
+      .update({ current_mileage: parsed.mileage })
+      .eq("id", parsed.carId)
+      .eq("user_id", userId);
+  }
+
+  if (parsed.serviceItemId) {
+    await supabase
+      .from("car_service_items")
+      .update({
+        last_service_date: parsed.serviceDate,
+        last_service_mileage: parsed.mileage
+      })
+      .eq("id", parsed.serviceItemId)
+      .eq("user_id", userId);
+  }
+
+  revalidatePath("/car");
+}
+
+export async function upsertWorkProjectAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = workProjectSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    description: formData.get("description"),
+    status: formData.get("status") || "active",
+    startDate: formData.get("startDate"),
+    dueDate: formData.get("dueDate")
+  });
+
+  const payload = {
+    user_id: userId,
+    title: parsed.title,
+    description: parsed.description || null,
+    status: parsed.status,
+    start_date: parsed.startDate || null,
+    due_date: parsed.dueDate || null
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("work_projects")
+        .update({
+          title: payload.title,
+          description: payload.description,
+          status: payload.status,
+          start_date: payload.start_date,
+          due_date: payload.due_date
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("work_projects").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
+}
+
+export async function upsertWorkCaseAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = workCaseSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    title: formData.get("title"),
+    problem: formData.get("problem"),
+    actions: formData.get("actions"),
+    result: formData.get("result"),
+    metricsBefore: formData.get("metricsBefore"),
+    metricsAfter: formData.get("metricsAfter"),
+    conclusion: formData.get("conclusion"),
+    skills: formData.get("skills")
+  });
+
+  const payload = {
+    user_id: userId,
+    title: parsed.title,
+    problem: parsed.problem || null,
+    actions: parsed.actions || null,
+    result: parsed.result || null,
+    metrics_before: parsed.metricsBefore || null,
+    metrics_after: parsed.metricsAfter || null,
+    conclusion: parsed.conclusion || null,
+    skills: parseTags(parsed.skills)
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("work_cases")
+        .update({
+          title: payload.title,
+          problem: payload.problem,
+          actions: payload.actions,
+          result: payload.result,
+          metrics_before: payload.metrics_before,
+          metrics_after: payload.metrics_after,
+          conclusion: payload.conclusion,
+          skills: payload.skills
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("work_cases").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
+}
+
+export async function upsertWorkSkillAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = workSkillSchema.parse({
+    id: String(formData.get("id") ?? "") || undefined,
+    name: formData.get("name"),
+    level: formData.get("level"),
+    targetLevel: formData.get("targetLevel"),
+    comment: formData.get("comment")
+  });
+
+  const payload = {
+    user_id: userId,
+    name: parsed.name,
+    level: parsed.level,
+    target_level: parsed.targetLevel,
+    comment: parsed.comment || null
+  };
+
+  const { error } = parsed.id
+    ? await supabase
+        .from("work_skills")
+        .update({
+          name: payload.name,
+          level: payload.level,
+          target_level: payload.target_level,
+          comment: payload.comment
+        })
+        .eq("id", parsed.id)
+        .eq("user_id", userId)
+    : await supabase.from("work_skills").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
 }
 
 export async function createTeamAction(formData: FormData) {
@@ -2567,7 +3383,7 @@ async function requireUser() {
     redirect("/login");
   }
 
-  return { supabase, userId: user.id };
+  return { supabase, userId: user.id, user };
 }
 
 async function getRequestOrigin() {
@@ -2606,6 +3422,91 @@ async function syncGoalTasks(goalId: string, taskIds: string[]) {
   if (insertError) {
     throw new Error(insertError.message);
   }
+}
+
+async function assertCarOwner(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  carId: string
+) {
+  const { data: car, error } = await supabase
+    .from("cars")
+    .select("id,current_mileage")
+    .eq("id", carId)
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !car) {
+    throw new Error(error?.message ?? "Автомобиль не найден");
+  }
+
+  return car;
+}
+
+async function getOwnedLifeAreaIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  areaIds: string[]
+) {
+  const uniqueIds = Array.from(new Set(areaIds));
+  if (!uniqueIds.length) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("life_areas")
+    .select("id")
+    .eq("user_id", userId)
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((area) => area.id);
+}
+
+function getStarterTemplate(template: "balanced" | "health" | "discipline" | "work") {
+  const templates = {
+    balanced: {
+      categoryName: "Стартовый ритм",
+      color: "#0f766e",
+      tasks: [
+        { title: "10 минут движения", description: "Минимальный телесный ритм без перегруза", weight: 2 },
+        { title: "Фокус 45 минут на главном", description: "Один осмысленный рабочий блок", weight: 2 },
+        { title: "Вечерний итог дня", description: "Коротко зафиксировать факт и вывод", weight: 1 }
+      ]
+    },
+    health: {
+      categoryName: "Здоровье и ресурс",
+      color: "#16a34a",
+      tasks: [
+        { title: "Прогулка или мягкое движение", description: "Бережное движение по состоянию", weight: 2 },
+        { title: "Сон без позднего добивания дня", description: "Подготовка ко сну и восстановление", weight: 2 },
+        { title: "Отметить энергию и самочувствие", description: "Понять, что влияет на выполнение", weight: 1 }
+      ]
+    },
+    discipline: {
+      categoryName: "Дисциплина",
+      color: "#2563eb",
+      tasks: [
+        { title: "Подъем в выбранное время", description: "Режим без жесткого самонаказания", weight: 2 },
+        { title: "Закрыть главный фокус дня", description: "Одна задача, которая двигает систему", weight: 3 },
+        { title: "Не пропустить ежедневный факт", description: "Поддерживать учет без перфекционизма", weight: 1 }
+      ]
+    },
+    work: {
+      categoryName: "Работа и рост",
+      color: "#0f766e",
+      tasks: [
+        { title: "Глубокая работа 60 минут", description: "Один блок без распыления", weight: 3 },
+        { title: "Прокачка навыка", description: "Учеба или практика для роста дохода", weight: 2 },
+        { title: "Зафиксировать результат", description: "Мини-кейс: что сделал и что улучшилось", weight: 1 }
+      ]
+    }
+  } as const;
+
+  return templates[template];
 }
 
 function parseTags(value?: string) {
@@ -2768,4 +3669,8 @@ function revalidateTracker() {
   revalidatePath("/notes");
   revalidatePath("/checks");
   revalidatePath("/settings");
+  revalidatePath("/finance");
+  revalidatePath("/health");
+  revalidatePath("/car");
+  revalidatePath("/work");
 }

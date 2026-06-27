@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Download, Trash2 } from "lucide-react";
 import {
+  changePasswordAction,
   createCategoryAction,
   deleteCategoryAction,
   updateCategoryAction,
@@ -106,6 +107,34 @@ export default async function SettingsPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Смена пароля</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={changePasswordAction} className="grid gap-4 lg:grid-cols-3 lg:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword">Текущий пароль</Label>
+              <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">Новый пароль</Label>
+              <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Повторите новый пароль</Label>
+              <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required />
+            </div>
+            <div className="lg:col-span-3">
+              <Button type="submit">Обновить пароль</Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Пароль меняется в Supabase Auth. В базе приложения он не хранится.
+              </p>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       <ReminderSettings preferences={preferences} />
 

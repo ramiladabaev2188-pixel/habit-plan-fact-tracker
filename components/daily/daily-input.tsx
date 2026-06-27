@@ -13,7 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { dailyNoteSchema, factValueSchema } from "@/lib/validators/tracker";
+import { missReasonLabels } from "@/lib/reflection";
+import { dailyNoteSchema, factValueSchema, missReasonSchema } from "@/lib/validators/tracker";
 import { cn, formatScore } from "@/lib/utils";
 import type { Category, DailyFact, DailyNote, DailyPlan, Task } from "@/types/domain";
 
@@ -31,7 +32,9 @@ const dailyFormSchema = z.object({
     z.object({
       taskId: z.string().uuid(),
       actualValue: factValueSchema.nullable(),
-      note: z.string().optional()
+      note: z.string().optional(),
+      missReason: missReasonSchema.or(z.literal("")).optional(),
+      missComment: z.string().optional()
     })
   ),
   dailyNote: dailyNoteSchema.optional()
@@ -88,7 +91,9 @@ export function DailyInput({
       entries: items.map((item) => ({
         taskId: item.task.id,
         actualValue: item.fact?.actual_value ?? null,
-        note: item.fact?.note ?? ""
+        note: item.fact?.note ?? "",
+        missReason: item.fact?.miss_reason ?? "",
+        missComment: item.fact?.miss_comment ?? ""
       })),
       dailyNote: {
         content: dailyNote?.content ?? "",
@@ -219,6 +224,8 @@ export function DailyInput({
 
       form.setValue(`entries.${index}.actualValue`, yesterday.actual_value, { shouldDirty: true, shouldValidate: true });
       form.setValue(`entries.${index}.note`, yesterday.note ?? "", { shouldDirty: true });
+      form.setValue(`entries.${index}.missReason`, yesterday.miss_reason ?? "", { shouldDirty: true });
+      form.setValue(`entries.${index}.missComment`, yesterday.miss_comment ?? "", { shouldDirty: true });
       copiedTaskIds.add(item.task.id);
     });
 
@@ -337,6 +344,7 @@ export function DailyInput({
             {group.rows.map(({ item, index }) => {
               const current = watchedEntries[index]?.actualValue ?? null;
               const hasFact = current !== null;
+              const isBelowPlan = hasFact && current < item.plan.planned_value;
               const stateClass =
                 !hasFact
                   ? "border-border bg-muted/30"
@@ -392,6 +400,37 @@ export function DailyInput({
                       onFocus={captureUndoSnapshot}
                       {...form.register(`entries.${index}.note`)}
                     />
+                    {isBelowPlan ? (
+                      <div className="grid gap-3 rounded-md border border-warning/30 bg-warning/10 p-3 sm:grid-cols-[220px_1fr]">
+                        <div className="space-y-2">
+                          <Label htmlFor={`miss-reason-${item.task.id}`}>Причина ниже плана</Label>
+                          <Select
+                            id={`miss-reason-${item.task.id}`}
+                            disabled={readOnly}
+                            onFocus={captureUndoSnapshot}
+                            {...form.register(`entries.${index}.missReason`)}
+                          >
+                            <option value="">Не выбрано</option>
+                            {Object.entries(missReasonLabels).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`miss-comment-${item.task.id}`}>Короткий комментарий</Label>
+                          <Textarea
+                            id={`miss-comment-${item.task.id}`}
+                            className="min-h-10"
+                            placeholder="Нашли причину — теперь можно улучшить систему"
+                            disabled={readOnly}
+                            onFocus={captureUndoSnapshot}
+                            {...form.register(`entries.${index}.missComment`)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                     {form.formState.errors.entries?.[index]?.actualValue ? (
                       <p className="text-sm text-destructive">
                         {form.formState.errors.entries[index]?.actualValue?.message}

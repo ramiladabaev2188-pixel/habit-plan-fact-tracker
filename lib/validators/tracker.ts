@@ -131,6 +131,211 @@ export const dailyNoteSchema = z.object({
   energy: z.coerce.number().int().min(1).max(5).or(z.literal("")).optional()
 });
 
+export const missReasonSchema = z.enum([
+  "no_time",
+  "low_energy",
+  "forgot",
+  "not_important",
+  "overloaded_plan",
+  "health",
+  "other_priorities",
+  "no_conditions",
+  "other"
+]);
+
+export const weeklyReviewSchema = z.object({
+  monthId: z.string().uuid(),
+  weekNumber: z.coerce.number().int().min(1).max(5),
+  startDate: dateKeySchema,
+  endDate: dateKeySchema,
+  workedWell: z.string().trim().max(2000).optional(),
+  didntWork: z.string().trim().max(2000).optional(),
+  blockers: z.string().trim().max(2000).optional(),
+  repeatNext: z.string().trim().max(2000).optional(),
+  removeNext: z.string().trim().max(2000).optional(),
+  lesson: z.string().trim().max(2000).optional(),
+  nextWeekFocus: z.string().trim().max(2000).optional()
+});
+
+export const experimentSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "РќР°Р·РІР°РЅРёРµ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р° СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ").max(140),
+  hypothesis: z.string().trim().max(1000).optional(),
+  lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
+  startDate: dateKeySchema,
+  endDate: dateKeySchema,
+  status: z.enum(["draft", "active", "completed", "archived"]).default("draft"),
+  successMetric: z.string().trim().max(500).optional(),
+  resultSummary: z.string().trim().max(1500).optional(),
+  conclusion: z.string().trim().max(1500).optional()
+});
+
+export const experimentCheckinSchema = z.object({
+  experimentId: z.string().uuid(),
+  date: dateKeySchema,
+  value: z.coerce.number().min(0).max(1000),
+  note: z.string().trim().max(1000).optional()
+});
+
+export const lifeEventSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "РќР°Р·РІР°РЅРёРµ СЃРѕР±С‹С‚РёСЏ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ").max(160),
+  description: z.string().trim().max(1200).optional(),
+  lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
+  goalId: z.string().uuid().or(z.literal("")).optional(),
+  eventDate: dateKeySchema,
+  type: z.enum([
+    "achievement",
+    "milestone",
+    "decision",
+    "failure",
+    "recovery",
+    "purchase",
+    "health",
+    "finance",
+    "work",
+    "family",
+    "faith",
+    "custom"
+  ]),
+  importance: z.coerce.number().int().min(1).max(5)
+});
+
+export const financeSnapshotSchema = z.object({
+  date: dateKeySchema,
+  income: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  requiredExpenses: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  optionalExpenses: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  savings: z.coerce.number().min(-1_000_000_000).max(1_000_000_000).default(0),
+  debtTotal: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  investments: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export const financeGoalSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "Название цели слишком короткое").max(140),
+  targetAmount: z.coerce.number().positive("Цель должна быть больше 0").max(1_000_000_000),
+  currentAmount: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  dueDate: dateKeySchema.or(z.literal("")).optional(),
+  lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
+  goalId: z.string().uuid().or(z.literal("")).optional()
+});
+
+export const healthLogSchema = z.object({
+  date: dateKeySchema,
+  weight: z.coerce.number().positive().max(500).or(z.literal("")).optional(),
+  sleepHours: z.coerce.number().min(0).max(24).or(z.literal("")).optional(),
+  energy: z.coerce.number().int().min(1).max(5).or(z.literal("")).optional(),
+  mood: z.string().trim().max(80).optional(),
+  painLevel: z.coerce.number().int().min(0).max(10).or(z.literal("")).optional(),
+  workoutDone: z.coerce.boolean().default(false),
+  steps: z.coerce.number().int().min(0).max(200_000).or(z.literal("")).optional(),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export const carSystemSchema = z.enum([
+  "engine",
+  "transmission",
+  "transfer_case",
+  "front_diff",
+  "rear_diff",
+  "brakes",
+  "spark_plugs",
+  "filters",
+  "antifreeze",
+  "power_steering",
+  "battery",
+  "tires",
+  "other"
+]);
+
+export const carSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(2, "Название авто слишком короткое").max(100),
+  brand: z.string().trim().max(80).optional(),
+  model: z.string().trim().max(80).optional(),
+  year: z.coerce.number().int().min(1950).max(2100).or(z.literal("")).optional(),
+  currentMileage: z.coerce.number().int().min(0).max(5_000_000).default(0)
+});
+
+export const carServiceItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  carId: z.string().uuid(),
+  name: z.string().trim().min(2, "Название узла слишком короткое").max(120),
+  system: carSystemSchema,
+  lastServiceDate: dateKeySchema.or(z.literal("")).optional(),
+  lastServiceMileage: z.coerce.number().int().min(0).max(5_000_000).or(z.literal("")).optional(),
+  intervalMonths: z.coerce.number().int().min(1).max(240).or(z.literal("")).optional(),
+  intervalKm: z.coerce.number().int().min(1).max(500_000).or(z.literal("")).optional(),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export const carServiceLogSchema = z.object({
+  carId: z.string().uuid(),
+  serviceItemId: z.string().uuid().or(z.literal("")).optional(),
+  serviceDate: dateKeySchema,
+  mileage: z.coerce.number().int().min(0).max(5_000_000),
+  cost: z.coerce.number().min(0).max(100_000_000).default(0),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export const workProjectSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "Название проекта слишком короткое").max(160),
+  description: z.string().trim().max(1200).optional(),
+  status: z.enum(["active", "paused", "completed", "archived"]).default("active"),
+  startDate: dateKeySchema.or(z.literal("")).optional(),
+  dueDate: dateKeySchema.or(z.literal("")).optional()
+});
+
+export const workCaseSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "Название кейса слишком короткое").max(160),
+  problem: z.string().trim().max(2000).optional(),
+  actions: z.string().trim().max(3000).optional(),
+  result: z.string().trim().max(2000).optional(),
+  metricsBefore: z.string().trim().max(1000).optional(),
+  metricsAfter: z.string().trim().max(1000).optional(),
+  conclusion: z.string().trim().max(2000).optional(),
+  skills: z.string().trim().max(500).optional()
+});
+
+export const workSkillSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(2, "Название навыка слишком короткое").max(100),
+  level: z.coerce.number().int().min(1).max(10),
+  targetLevel: z.coerce.number().int().min(1).max(10),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export const passwordChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Введите текущий пароль").max(128, "Пароль слишком длинный"),
+    newPassword: z.string().min(12, "Новый пароль должен быть не короче 12 символов").max(128, "Пароль слишком длинный"),
+    confirmPassword: z.string().min(12, "Подтвердите новый пароль").max(128, "Пароль слишком длинный")
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "Новый пароль и подтверждение не совпадают",
+    path: ["confirmPassword"]
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    message: "Новый пароль должен отличаться от текущего",
+    path: ["newPassword"]
+  });
+
+export const onboardingSchema = z.object({
+  name: z.string().trim().min(1, "Введите имя").max(80),
+  lifeAreaIds: z.array(z.string().uuid()).default([]),
+  desiredIdentity: z.string().trim().min(3, "Опишите версию себя").max(500),
+  goal1: z.string().trim().min(2, "Укажите первую цель").max(160),
+  goal2: z.string().trim().max(160).optional(),
+  goal3: z.string().trim().max(160).optional(),
+  blockers: z.array(z.string().trim().max(80)).default([]),
+  mode: z.enum(["recovery", "normal", "push"]).default("normal"),
+  starterTemplate: z.enum(["balanced", "health", "discipline", "work"]).default("balanced")
+});
+
 export const copyMonthTemplateSchema = z.object({
   sourceMonthId: z.string().uuid(),
   year: z.coerce.number().int().min(2020).max(2100),

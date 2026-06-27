@@ -20,6 +20,7 @@ import {
   getRiskTasks,
   getStrongTasks
 } from "@/lib/recommendations";
+import { calculateFailureInsights } from "@/lib/reflection";
 import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
 import { loadTrackerData } from "@/lib/supabase/data";
 import { formatPercent, formatScore } from "@/lib/utils";
@@ -109,6 +110,7 @@ export default async function MonthlyReportPage({
   });
   const strongTasks = getStrongTasks(taskStats, 5);
   const weakTasks = getRiskTasks(taskStats, 5);
+  const failureInsights = calculateFailureInsights(plans, facts, tasks, today);
 
   return (
     <div className="space-y-5">
@@ -161,6 +163,29 @@ export default async function MonthlyReportPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Почему срывается план</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-3">
+          <ReportList
+            title="Причины"
+            empty="Причины пока не отмечены. Это нормально: блок начнет помогать после нескольких дневных отметок."
+            items={failureInsights.topReasons.map((item) => `${item.label}: ${item.count} раз`)}
+          />
+          <ReportList
+            title="Задачи"
+            empty="Пока нет повторяющихся провалов по задачам."
+            items={failureInsights.missedTasks.map((item) => `${item.title}: ${item.count} дн.`)}
+          />
+          <ReportList
+            title="Дни недели"
+            empty="Недостаточно данных по дням недели."
+            items={failureInsights.missedWeekdays.map((item) => `${item.label}: ${item.count}`)}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -253,6 +278,22 @@ function TaskRow({ title, value }: { title: string; value: string }) {
     <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
       <span className="min-w-0 truncate font-medium">{title}</span>
       <Badge variant="outline">{value}</Badge>
+    </div>
+  );
+}
+
+function ReportList({ title, empty, items }: { title: string; empty: string; items: string[] }) {
+  return (
+    <div className="space-y-3 rounded-md border p-4">
+      <div className="font-medium">{title}</div>
+      {items.length ? (
+        items.map((item) => (
+          <div key={item} className="rounded-md bg-muted/40 p-3 text-sm">{item}</div>
+        ))
+      ) : (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      )}
+      <p className="text-xs text-muted-foreground">Нашли причину — теперь можно улучшить систему.</p>
     </div>
   );
 }
