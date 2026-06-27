@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
-  { href: "/daily", label: "День", icon: ListChecks },
+  { href: "/daily", label: "Сегодня", icon: ListChecks },
   { href: "/planner", label: "План", icon: ClipboardList },
   { href: "/growth", label: "Развитие", icon: Sprout },
   { href: "/goals", label: "Цели", icon: Flag },
@@ -84,8 +84,8 @@ const navGroups = [
 ];
 
 const navItemByHref = new Map(navItems.map((item) => [item.href, item]));
-const primaryHrefs = new Set(["/dashboard", "/daily", "/planner", "/growth", "/goals"]);
-const mobilePrimaryHrefs = new Set(["/dashboard", "/daily", "/planner", "/growth"]);
+const primaryHrefs = new Set(["/daily", "/planner", "/goals", "/analytics"]);
+const mobilePrimaryHrefs = new Set(["/daily", "/planner", "/goals", "/analytics"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -98,6 +98,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const isDesktopMoreActive = moreItems.some((item) => isActive(item.href));
   const isMobileMoreActive = mobileMoreItems.some((item) => isActive(item.href));
+
+  useEffect(() => {
+    if (!moreOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreOpen]);
 
   if (isLogin) {
     return <>{children}</>;
@@ -186,12 +208,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
 
       {moreOpen ? (
-        <div className="app-all-nav-backdrop" role="dialog" aria-modal="true" aria-label="Все разделы">
-          <div className="app-all-nav-panel">
-            <div className="mb-4 flex items-center justify-between gap-3">
+        <div
+          className="app-all-nav-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="all-nav-title"
+          onClick={() => setMoreOpen(false)}
+        >
+          <div className="app-all-nav-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-3 border-b border-border/75 bg-card pb-4">
               <div>
                 <div className="text-xs text-muted-foreground">Навигация</div>
-                <div className="mt-1 text-2xl font-normal tracking-tight">Все разделы</div>
+                <div id="all-nav-title" className="mt-1 text-2xl font-normal tracking-tight">Все разделы</div>
               </div>
               <Button type="button" variant="outline" size="icon" onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">
                 <X className="h-4 w-4" />

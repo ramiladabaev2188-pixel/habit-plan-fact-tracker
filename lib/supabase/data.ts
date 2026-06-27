@@ -801,7 +801,9 @@ export function normalizeCategory(row: Category): Category {
 export function normalizeTask(row: Task): Task {
   return {
     ...row,
-    weight: Number(row.weight)
+    weight: Number(row.weight),
+    input_mode: row.input_mode ?? "ratio",
+    unit: row.unit ?? null
   };
 }
 

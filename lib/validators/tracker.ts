@@ -5,6 +5,11 @@ const quarterStep = (value: number) => Math.round(value * 4) === value * 4;
 export const factValueSchema = z
   .number()
   .min(0, "Значение не может быть меньше 0")
+  .max(1000000, "Значение слишком большое");
+
+export const ratioFactValueSchema = z
+  .number()
+  .min(0, "Значение не может быть меньше 0")
   .max(2, "Значение не может быть больше 2")
   .refine(quarterStep, "Значение должно быть кратно 0.25");
 
@@ -25,8 +30,7 @@ export const dateKeySchema = z
 export const planValueSchema = z
   .number()
   .min(0, "План не может быть отрицательным")
-  .max(2, "План ограничен шкалой 0-2")
-  .refine(quarterStep, "План должен быть кратен 0.25");
+  .max(1000000, "План слишком большой");
 
 export const monthSchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100),
@@ -53,16 +57,30 @@ export const categoryUpdateSchema = categorySchema.extend({
   id: z.string().uuid()
 });
 
-export const taskSchema = z.object({
+const taskBaseSchema = z.object({
   categoryId: z.string().uuid("Выберите категорию"),
   title: z.string().trim().min(2, "Название слишком короткое"),
   description: z.string().trim().optional(),
-  weight: z.coerce.number().positive("Вес должен быть больше 0").max(20)
+  weight: z.coerce.number().positive("Вес должен быть больше 0").max(20),
+  inputMode: z.enum(["ratio", "measured"]).default("ratio"),
+  unit: z.string().trim().max(24, "Единица слишком длинная").optional()
 });
 
-export const taskUpdateSchema = taskSchema.extend({
+function validateTaskInputMode(value: z.infer<typeof taskBaseSchema>, ctx: z.RefinementCtx) {
+  if (value.inputMode === "measured" && !value.unit?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["unit"],
+      message: "Для измеримой задачи укажите единицу"
+    });
+  }
+}
+
+export const taskSchema = taskBaseSchema.superRefine(validateTaskInputMode);
+
+export const taskUpdateSchema = taskBaseSchema.extend({
   id: z.string().uuid()
-});
+}).superRefine(validateTaskInputMode);
 
 export const entityIdSchema = z.string().uuid();
 

@@ -10,6 +10,7 @@ import { saveDailyFactsAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,6 +42,7 @@ const dailyFormSchema = z.object({
 });
 
 type DailyForm = z.infer<typeof dailyFormSchema>;
+type DailyFilter = "all" | "unfilled" | "focus" | "below";
 
 type DailyItem = {
   task: Task;
@@ -81,6 +83,7 @@ export function DailyInput({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [canUndo, setCanUndo] = useState(false);
+  const [filter, setFilter] = useState<DailyFilter>("all");
   const [filledTaskIds, setFilledTaskIds] = useState<Set<string>>(
     () => new Set(items.filter((item) => item.fact).map((item) => item.task.id))
   );
@@ -136,6 +139,11 @@ export function DailyInput({
 
     return Array.from(map.values());
   }, [items]);
+  const maxTaskWeight = useMemo(() => Math.max(0, ...items.map((item) => item.task.weight)), [items]);
+  const focusTaskIds = useMemo(
+    () => new Set(items.filter((item) => item.task.weight === maxTaskWeight).map((item) => item.task.id)),
+    [items, maxTaskWeight]
+  );
 
   useEffect(() => {
     form.reset(defaultValues);
@@ -173,6 +181,18 @@ export function DailyInput({
     form.setValue(`entries.${index}.actualValue`, value, { shouldDirty: true, shouldValidate: true });
     markFilled(taskId);
   }, [captureUndoSnapshot, form, markFilled]);
+
+  const clearFactValue = useCallback((index: number, taskId: string) => {
+    captureUndoSnapshot();
+    form.setValue(`entries.${index}.actualValue`, null, { shouldDirty: true, shouldValidate: true });
+    form.setValue(`entries.${index}.missReason`, "", { shouldDirty: true });
+    form.setValue(`entries.${index}.missComment`, "", { shouldDirty: true });
+    setFilledTaskIds((current) => {
+      const next = new Set(current);
+      next.delete(taskId);
+      return next;
+    });
+  }, [captureUndoSnapshot, form]);
 
   const save = useCallback(async (values: DailyForm) => {
     const payload = JSON.stringify(values);
@@ -231,9 +251,9 @@ export function DailyInput({
       }
 
       form.setValue(`entries.${index}.actualValue`, yesterday.actual_value, { shouldDirty: true, shouldValidate: true });
-      form.setValue(`entries.${index}.note`, yesterday.note ?? "", { shouldDirty: true });
-      form.setValue(`entries.${index}.missReason`, yesterday.miss_reason ?? "", { shouldDirty: true });
-      form.setValue(`entries.${index}.missComment`, yesterday.miss_comment ?? "", { shouldDirty: true });
+      form.setValue(`entries.${index}.note`, "", { shouldDirty: true });
+      form.setValue(`entries.${index}.missReason`, "", { shouldDirty: true });
+      form.setValue(`entries.${index}.missComment`, "", { shouldDirty: true });
       copiedTaskIds.add(item.task.id);
     });
 
@@ -324,17 +344,54 @@ export function DailyInput({
             Заполнить по плану
           </Button>
           <Button type="button" variant="outline" disabled={readOnly || !hasUnfilled} onClick={markUnfilledAsZero}>
-            0 для пустых
+            Остальное не сделал
           </Button>
           <Button type="button" variant="secondary" disabled={readOnly || yesterdayFacts.length === 0} onClick={copyYesterday}>
             <Copy className="h-4 w-4" />
             Факт со вчера
           </Button>
+          <div className="grid gap-2 sm:col-span-3 sm:grid-cols-4" role="group" aria-label="Фильтр задач дня">
+            {[
+              ["all", "Все"],
+              ["unfilled", "Не заполнено"],
+              ["focus", "Главный фокус"],
+              ["below", "Просадки"]
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                variant={filter === value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilter(value as DailyFilter)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
-      {groups.map((group) => (
-        <details key={group.category?.id ?? "without-category"} open className="daily-category group">
+      {groups.map((group) => {
+        const visibleRows = group.rows.filter(({ item, index }) => {
+          const current = watchedEntries[index]?.actualValue ?? null;
+          if (filter === "unfilled") {
+            return current === null;
+          }
+          if (filter === "focus") {
+            return focusTaskIds.has(item.task.id);
+          }
+          if (filter === "below") {
+            return current !== null && current < item.plan.planned_value;
+          }
+          return true;
+        });
+
+        if (!visibleRows.length) {
+          return null;
+        }
+
+        return (
+        <details key={group.category?.id ?? "without-category"} open={groups.length <= 4} className="daily-category group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-muted/35 p-4 transition-colors hover:bg-primary/[0.04]">
             <div className="flex min-w-0 items-center gap-2">
               {group.category ? (
@@ -349,10 +406,12 @@ export function DailyInput({
             <span className="text-xs text-muted-foreground">свернуть</span>
           </summary>
           <div className="space-y-3 border-t border-border/80 p-3">
-            {group.rows.map(({ item, index }) => {
+            {visibleRows.map(({ item, index }) => {
               const current = watchedEntries[index]?.actualValue ?? null;
               const hasFact = current !== null;
               const isBelowPlan = hasFact && current < item.plan.planned_value;
+              const isMeasured = item.task.input_mode === "measured";
+              const taskUnit = item.task.unit?.trim() || "ед.";
               const stateClass =
                 !hasFact
                   ? "border-border bg-muted/30"
@@ -369,7 +428,10 @@ export function DailyInput({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="info">Вес {formatScore(item.task.weight)}</Badge>
-                          <Badge variant="outline">План {formatScore(item.plan.planned_value)}</Badge>
+                          <Badge variant="outline">
+                            План {formatScore(item.plan.planned_value)}{isMeasured ? ` ${taskUnit}` : ""}
+                          </Badge>
+                          {isMeasured ? <Badge variant="outline">Измеримая</Badge> : null}
                         </div>
                         <h2 className="mt-2 text-base font-semibold tracking-normal">{item.task.title}</h2>
                       </div>
@@ -377,37 +439,72 @@ export function DailyInput({
                         <div className="font-semibold">
                           {hasFact ? formatScore(current * item.task.weight) : "—"} / {formatScore(item.plan.planned_score)}
                         </div>
-                        <div className="text-muted-foreground">факт / план</div>
+                        <div className="text-muted-foreground">баллы факт / план</div>
+                        {isMeasured ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {hasFact ? formatScore(current) : "—"} / {formatScore(item.plan.planned_value)} {taskUnit}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
                     <input type="hidden" {...form.register(`entries.${index}.taskId`)} />
-                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-                      {factOptions.map((value) => (
-                        <Button
-                          key={value}
-                          type="button"
-                          variant={current === value ? "default" : "outline"}
-                          className={cn(
-                            "h-12 px-2 text-base sm:h-11 sm:text-sm",
-                            current === value && "scale-[1.02] shadow-[0_10px_20px_-16px_hsl(var(--primary))]"
-                          )}
-                          disabled={readOnly}
-                          aria-pressed={current === value}
-                          onClick={() => setFactValue(index, item.task.id, value)}
-                        >
-                          {value}
+                    {isMeasured ? (
+                      <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor={`actual-${item.task.id}`}>Факт в единицах</Label>
+                          <InputLikeNumber
+                            id={`actual-${item.task.id}`}
+                            value={current}
+                            unit={taskUnit}
+                            disabled={readOnly}
+                            onFocus={captureUndoSnapshot}
+                            onChange={(value) => {
+                              if (value === null) {
+                                clearFactValue(index, item.task.id);
+                              } else {
+                                setFactValue(index, item.task.id, value);
+                              }
+                            }}
+                          />
+                        </div>
+                        <Button type="button" variant="outline" disabled={readOnly} onClick={() => setFactValue(index, item.task.id, item.plan.planned_value)}>
+                          По плану
                         </Button>
-                      ))}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                        {factOptions.map((value) => (
+                          <Button
+                            key={value}
+                            type="button"
+                            variant={current === value ? "default" : "outline"}
+                            className={cn(
+                              "h-12 px-2 text-base sm:h-11 sm:text-sm",
+                              current === value && "scale-[1.02] shadow-[0_10px_20px_-16px_hsl(var(--primary))]"
+                            )}
+                            disabled={readOnly}
+                            aria-pressed={current === value}
+                            onClick={() => setFactValue(index, item.task.id, value)}
+                          >
+                            {value}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
 
-                    <Textarea
-                      placeholder={hasFact ? "Комментарий к задаче" : "Сначала выберите факт"}
-                      className="min-h-16"
-                      disabled={readOnly || !hasFact}
-                      onFocus={captureUndoSnapshot}
-                      {...form.register(`entries.${index}.note`)}
-                    />
+                    <details className="rounded-md border border-border/70 bg-card/70 p-3">
+                      <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+                        Комментарий к задаче
+                      </summary>
+                      <Textarea
+                        placeholder={hasFact ? "Коротко: что повлияло на выполнение" : "Сначала выберите факт"}
+                        className="mt-3 min-h-16"
+                        disabled={readOnly || !hasFact}
+                        onFocus={captureUndoSnapshot}
+                        {...form.register(`entries.${index}.note`)}
+                      />
+                    </details>
                     {isBelowPlan ? (
                       <div className="grid gap-3 rounded-md border border-warning/30 bg-warning/10 p-3 sm:grid-cols-[220px_1fr]">
                         <div className="space-y-2">
@@ -450,7 +547,22 @@ export function DailyInput({
             })}
           </div>
         </details>
-      ))}
+        );
+      })}
+
+      {groups.length > 0 && groups.every((group) => group.rows.every(({ item, index }) => {
+        const current = watchedEntries[index]?.actualValue ?? null;
+        if (filter === "unfilled") return current !== null;
+        if (filter === "focus") return !focusTaskIds.has(item.task.id);
+        if (filter === "below") return current === null || current >= item.plan.planned_value;
+        return false;
+      })) ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">
+            По текущему фильтру задач нет.
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="section-panel">
         <CardHeader>
@@ -532,5 +644,45 @@ export function DailyInput({
         </div>
       </div>
     </form>
+  );
+}
+
+function InputLikeNumber({
+  id,
+  value,
+  unit,
+  disabled,
+  onFocus,
+  onChange
+}: {
+  id: string;
+  value: number | null;
+  unit: string;
+  disabled?: boolean;
+  onFocus: () => void;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type="number"
+        min="0"
+        step="any"
+        value={value ?? ""}
+        disabled={disabled}
+        className="pr-20"
+        onFocus={onFocus}
+        onChange={(event) => {
+          const next = event.currentTarget.value === "" ? null : Number(event.currentTarget.value);
+          if (next === null || Number.isFinite(next)) {
+            onChange(next);
+          }
+        }}
+      />
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+        {unit}
+      </span>
+    </div>
   );
 }

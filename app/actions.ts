@@ -41,6 +41,7 @@ import {
   planGenerationSchema,
   planValueSchema,
   preferencesSchema,
+  ratioFactValueSchema,
   settingsSchema,
   signInSchema,
   signUpSchema,
@@ -502,7 +503,9 @@ export async function createTaskAction(formData: FormData) {
     categoryId: formData.get("categoryId"),
     title: formData.get("title"),
     description: formData.get("description"),
-    weight: formData.get("weight")
+    weight: formData.get("weight"),
+    inputMode: formData.get("inputMode") || "ratio",
+    unit: formData.get("unit")
   });
 
   const { error } = await supabase.from("tasks").upsert(
@@ -512,6 +515,8 @@ export async function createTaskAction(formData: FormData) {
       title: parsed.title,
       description: parsed.description || null,
       weight: parsed.weight,
+      input_mode: parsed.inputMode,
+      unit: parsed.inputMode === "measured" ? parsed.unit || null : null,
       is_active: true
     },
     { onConflict: "user_id,title" }
@@ -531,7 +536,9 @@ export async function updateTaskAction(formData: FormData) {
     categoryId: formData.get("categoryId"),
     title: formData.get("title"),
     description: formData.get("description"),
-    weight: formData.get("weight")
+    weight: formData.get("weight"),
+    inputMode: formData.get("inputMode") || "ratio",
+    unit: formData.get("unit")
   });
 
   const { error } = await supabase
@@ -540,7 +547,9 @@ export async function updateTaskAction(formData: FormData) {
       category_id: parsed.categoryId,
       title: parsed.title,
       description: parsed.description || null,
-      weight: parsed.weight
+      weight: parsed.weight,
+      input_mode: parsed.inputMode,
+      unit: parsed.inputMode === "measured" ? parsed.unit || null : null
     })
     .eq("id", parsed.id)
     .eq("user_id", userId);
@@ -912,7 +921,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
 
   const [{ data: tasks, error: tasksError }, { data: plans, error: plansError }] = await Promise.all([
     taskIds.length
-      ? supabase.from("tasks").select("id, weight").eq("user_id", userId).in("id", taskIds)
+      ? supabase.from("tasks").select("id, weight, input_mode").eq("user_id", userId).in("id", taskIds)
       : Promise.resolve({ data: [], error: null }),
     taskIds.length
       ? supabase
@@ -929,6 +938,7 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
   }
 
   const taskWeights = new Map((tasks ?? []).map((task) => [task.id, Number(task.weight)]));
+  const taskInputModes = new Map((tasks ?? []).map((task) => [task.id, task.input_mode ?? "ratio"]));
   const plannedTaskIds = new Set((plans ?? []).map((plan) => plan.task_id));
   const plannedValues = new Map((plans ?? []).map((plan) => [plan.task_id, Number(plan.planned_value)]));
 
@@ -939,21 +949,24 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
   const rows = entries
     .filter((entry): entry is DailyEntryInput & { actualValue: number } => typeof entry.actualValue === "number")
     .map((entry) => {
-    const actualValue = factValueSchema.parse(entry.actualValue);
-    const plannedValue = plannedValues.get(entry.taskId) ?? 0;
-    const isBelowPlan = actualValue < plannedValue;
-    const parsedReason = entry.missReason ? missReasonSchema.safeParse(entry.missReason) : null;
+      const inputMode = taskInputModes.get(entry.taskId) ?? "ratio";
+      const actualValue = inputMode === "measured"
+        ? factValueSchema.parse(entry.actualValue)
+        : ratioFactValueSchema.parse(entry.actualValue);
+      const plannedValue = plannedValues.get(entry.taskId) ?? 0;
+      const isBelowPlan = actualValue < plannedValue;
+      const parsedReason = entry.missReason ? missReasonSchema.safeParse(entry.missReason) : null;
 
-    return {
-      month_id: input.monthId,
-      task_id: entry.taskId,
-      date: parsedDate.data,
-      actual_value: actualValue,
-      actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
-      note: entry.note?.trim() || null,
-      miss_reason: isBelowPlan && parsedReason?.success ? parsedReason.data : null,
-      miss_comment: isBelowPlan ? entry.missComment?.trim() || null : null
-    };
+      return {
+        month_id: input.monthId,
+        task_id: entry.taskId,
+        date: parsedDate.data,
+        actual_value: actualValue,
+        actual_score: calculateScore(actualValue, taskWeights.get(entry.taskId) ?? 0),
+        note: entry.note?.trim() || null,
+        miss_reason: isBelowPlan && parsedReason?.success ? parsedReason.data : null,
+        miss_comment: isBelowPlan ? entry.missComment?.trim() || null : null
+      };
     });
 
   const clearedTaskIds = entries
@@ -3439,6 +3452,8 @@ export async function importJsonAction(formData: FormData) {
           title,
           description: asNullableString(task.description),
           weight: asNumber(task.weight, 1),
+          input_mode: asString(task.input_mode, "ratio") === "measured" ? "measured" : "ratio",
+          unit: asNullableString(task.unit),
           is_active: asBoolean(task.is_active, true)
         },
         { onConflict: "user_id,title" }

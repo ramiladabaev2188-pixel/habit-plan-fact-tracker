@@ -57,6 +57,7 @@ export function PlannerWorkspace({
   const visiblePlanTasks = tasks.filter(
     (task) => task.is_active || plans.some((plan) => plan.task_id === task.id)
   );
+  const canCreateTask = categories.length > 0;
   const approved = selectedMonth?.status === "approved" || selectedMonth?.status === "closed";
 
   return (
@@ -247,8 +248,8 @@ export function PlannerWorkspace({
             <form action={createTaskAction} className="grid gap-3">
               <div className="space-y-2">
                 <Label htmlFor="task-category">Категория</Label>
-                <Select id="task-category" name="categoryId" required>
-                  <option value="">Выберите категорию</option>
+                <Select id="task-category" name="categoryId" required disabled={!canCreateTask}>
+                  <option value="">{canCreateTask ? "Выберите категорию" : "Сначала создайте категорию"}</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
@@ -265,8 +266,26 @@ export function PlannerWorkspace({
                   <Label htmlFor="task-weight">Вес</Label>
                   <Input id="task-weight" name="weight" type="number" min="0.25" step="0.25" defaultValue="1" />
                 </div>
-                <Button type="submit" className="self-end">Добавить</Button>
+                <Button type="submit" className="self-end" disabled={!canCreateTask}>Добавить</Button>
               </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+                <div className="space-y-2">
+                  <Label htmlFor="task-input-mode">Тип ввода факта</Label>
+                  <Select id="task-input-mode" name="inputMode" defaultValue="ratio">
+                    <option value="ratio">Шкала 0-2</option>
+                    <option value="measured">Измеримое значение</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="task-unit">Единица</Label>
+                  <Input id="task-unit" name="unit" placeholder="шаги, мин, стр." />
+                </div>
+              </div>
+              {!canCreateTask ? (
+                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  Задача должна быть связана с категорией. Создайте категорию в соседнем блоке, затем добавьте задачу.
+                </p>
+              ) : null}
             </form>
             {tasks.length ? (
               <div className="space-y-3 border-t pt-4">
@@ -290,6 +309,9 @@ export function PlannerWorkspace({
                         ) : (
                           <Badge variant="warning">Без категории</Badge>
                         )}
+                        <Badge variant={task.input_mode === "measured" ? "info" : "outline"}>
+                          {task.input_mode === "measured" ? `Измеримо: ${task.unit ?? "ед."}` : "Шкала 0-2"}
+                        </Badge>
                       </div>
                       <form action={updateTaskAction} className="grid gap-3">
                         <input type="hidden" name="id" value={task.id} />
@@ -301,7 +323,7 @@ export function PlannerWorkspace({
                             required
                             defaultValue={task.category_id ?? ""}
                           >
-                            <option value="">Выберите категорию</option>
+                            <option value="">{categories.length ? "Выберите категорию" : "Сначала создайте категорию"}</option>
                             {categories.map((category) => (
                               <option key={category.id} value={category.id}>
                                 {category.name}
@@ -332,6 +354,28 @@ export function PlannerWorkspace({
                           <Button type="submit" size="sm" className="self-end">
                             Сохранить
                           </Button>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+                          <div className="space-y-2">
+                            <Label htmlFor={`task-input-mode-${task.id}`}>Тип ввода факта</Label>
+                            <Select
+                              id={`task-input-mode-${task.id}`}
+                              name="inputMode"
+                              defaultValue={task.input_mode}
+                            >
+                              <option value="ratio">Шкала 0-2</option>
+                              <option value="measured">Измеримое значение</option>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`task-unit-${task.id}`}>Единица</Label>
+                            <Input
+                              id={`task-unit-${task.id}`}
+                              name="unit"
+                              defaultValue={task.unit ?? ""}
+                              placeholder="шаги, мин, стр."
+                            />
+                          </div>
                         </div>
                       </form>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -438,7 +482,8 @@ export function PlannerWorkspace({
               <input type="hidden" name="monthId" value={selectedMonth.id} />
               <div className="space-y-2">
                 <Label>Задача</Label>
-                <Select name="taskId" required>
+                <Select name="taskId" required disabled={!activeTasks.length}>
+                  {!activeTasks.length ? <option value="">Сначала добавьте активную задачу</option> : null}
                   {activeTasks.map((task) => (
                     <option key={task.id} value={task.id}>
                       {task.title}
@@ -460,7 +505,7 @@ export function PlannerWorkspace({
               </div>
               <div className="space-y-2">
                 <Label>План</Label>
-                <Input name="plannedValue" type="number" min="0" max="2" step="0.25" defaultValue="1" />
+                <Input name="plannedValue" type="number" min="0" step="0.25" defaultValue="1" />
               </div>
               <div className="space-y-2">
                 <Label>Дни недели</Label>
@@ -488,6 +533,11 @@ export function PlannerWorkspace({
                 <Wand2 className="h-4 w-4" />
                 Сгенерировать
               </Button>
+              {!activeTasks.length ? (
+                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground lg:col-span-6">
+                  Для генерации плана нужна хотя бы одна активная задача.
+                </p>
+              ) : null}
             </form>
           </CardContent>
         </Card>
@@ -552,7 +602,6 @@ export function PlannerWorkspace({
                                   name={`plan:${task.id}:${dateKey}`}
                                   type="number"
                                   min={min}
-                                  max="2"
                                   step="0.25"
                                   defaultValue={plan?.planned_value ?? 0}
                                 />

@@ -97,6 +97,8 @@ export type Task = {
   title: string;
   description: string | null;
   weight: number;
+  input_mode?: "ratio" | "measured";
+  unit?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

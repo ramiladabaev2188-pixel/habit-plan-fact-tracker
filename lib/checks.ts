@@ -1,4 +1,5 @@
 import type { DailyFact, DailyPlan, Month, Task } from "@/types/domain";
+import { getTodayKey } from "@/lib/dates/month";
 
 export type QualityIssue = {
   id: string;
@@ -17,18 +18,28 @@ export type QualityCheck = {
 };
 
 export function findMissingFacts(month: Month, plans: DailyPlan[], facts: DailyFact[]) {
+  const todayKey = getTodayKey();
   const factKeys = new Set(facts.map((fact) => `${fact.task_id}:${fact.date}`));
-  return plans
-    .filter((plan) => plan.planned_score > 0 && !factKeys.has(`${plan.task_id}:${plan.date}`))
-    .map((plan) => ({
-      id: `missing-${plan.task_id}-${plan.date}`,
-      title: `Нет факта за ${plan.date}`,
-      description: "Есть план, но факт не внесен.",
-      href: `/daily?month=${month.id}&date=${plan.date}`
-    }));
+  const missingByDate = new Map<string, number>();
+
+  for (const plan of plans) {
+    if (plan.date > todayKey || plan.planned_score <= 0 || factKeys.has(`${plan.task_id}:${plan.date}`)) {
+      continue;
+    }
+
+    missingByDate.set(plan.date, (missingByDate.get(plan.date) ?? 0) + 1);
+  }
+
+  return Array.from(missingByDate.entries()).map(([date, count]) => ({
+    id: `missing-${date}`,
+    title: `Нет факта за ${date}`,
+    description: `Есть план, но факт не внесен по задачам: ${count}.`,
+    href: `/daily?month=${month.id}&date=${date}`
+  }));
 }
 
 export function findZeroFactPlannedDays(month: Month, plans: DailyPlan[], facts: DailyFact[]) {
+  const todayKey = getTodayKey();
   const plannedDates = new Map<string, number>();
   const factDates = new Map<string, number>();
 
@@ -41,7 +52,7 @@ export function findZeroFactPlannedDays(month: Month, plans: DailyPlan[], facts:
   }
 
   return Array.from(plannedDates.entries())
-    .filter(([date, planScore]) => planScore > 0 && (factDates.get(date) ?? 0) === 0)
+    .filter(([date, planScore]) => date <= todayKey && planScore > 0 && (factDates.get(date) ?? 0) === 0)
     .map(([date]) => ({
       id: `zero-${date}`,
       title: `Нулевой факт за ${date}`,
@@ -186,8 +197,16 @@ function findDuplicates(items: { key: string; date: string; taskId: string }[], 
     counts.set(item.key, (counts.get(item.key) ?? 0) + 1);
   }
 
-  return items
-    .filter((item) => (counts.get(item.key) ?? 0) > 1)
+  const duplicatedKeys = new Set<string>();
+  for (const item of items) {
+    if ((counts.get(item.key) ?? 0) > 1) {
+      duplicatedKeys.add(item.key);
+    }
+  }
+
+  return Array.from(duplicatedKeys)
+    .map((key) => items.find((item) => item.key === key))
+    .filter((item): item is { key: string; date: string; taskId: string } => Boolean(item))
     .map((item) => ({
       id: `${title}-${item.key}`,
       title: `${title}: ${item.date}`,

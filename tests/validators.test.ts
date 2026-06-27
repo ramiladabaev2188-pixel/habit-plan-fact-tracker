@@ -4,6 +4,7 @@ import {
   factValueSchema,
   planGenerationSchema,
   preferencesSchema,
+  ratioFactValueSchema,
   settingsSchema,
   signInSchema,
   signUpSchema,
@@ -12,9 +13,12 @@ import {
 import { personalBoardTaskSchema } from "@/lib/validators/personal-board";
 
 describe("validators", () => {
-  it("accepts fact values in quarter steps only", () => {
+  it("accepts measured fact values and keeps a strict ratio schema", () => {
+    expect(factValueSchema.safeParse(5000).success).toBe(true);
     expect(factValueSchema.safeParse(1.25).success).toBe(true);
-    expect(factValueSchema.safeParse(1.3).success).toBe(false);
+    expect(ratioFactValueSchema.safeParse(1.25).success).toBe(true);
+    expect(ratioFactValueSchema.safeParse(1.3).success).toBe(false);
+    expect(ratioFactValueSchema.safeParse(3).success).toBe(false);
   });
 
   it("validates extended plan generation modes", () => {

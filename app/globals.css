@@ -346,11 +346,11 @@
   }
 
   .app-all-nav-backdrop {
-    @apply fixed inset-0 z-50 flex items-end bg-foreground/15 p-3 backdrop-blur-sm md:items-start md:justify-center md:pt-24;
+    @apply fixed inset-0 z-50 flex items-end bg-foreground/15 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm md:items-start md:justify-center md:pt-24;
   }
 
   .app-all-nav-panel {
-    @apply w-full max-w-3xl rounded-lg border border-border bg-card p-4 shadow-[0_20px_60px_rgba(32,32,32,0.12)] md:p-5;
+    @apply max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-lg border border-border bg-card p-4 shadow-[0_20px_60px_rgba(32,32,32,0.12)] md:max-h-[calc(100dvh-7rem)] md:p-5;
   }
 
   .app-mobile-nav {
