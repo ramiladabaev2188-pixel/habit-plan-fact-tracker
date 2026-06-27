@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { upsertHealthLogAction } from "@/app/actions";
+import { deleteHealthLogAction, upsertHealthLogAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { getTodayKey } from "@/lib/dates/month";
 import { calculateDailyStats } from "@/lib/metrics";
 import { calculateHealthSummary } from "@/lib/practical";
@@ -160,13 +161,57 @@ export default async function HealthPage() {
         <CardContent className="space-y-3">
           {healthResult.logs.length ? (
             healthResult.logs.map((log) => (
-              <div key={log.id} className="grid gap-2 rounded-lg border border-border/80 p-4 text-sm sm:grid-cols-6">
-                <div className="font-semibold">{log.date}</div>
-                <div>Вес: {log.weight ?? "—"}</div>
-                <div>Сон: {log.sleep_hours ?? "—"}</div>
-                <div>Энергия: {log.energy ?? "—"}</div>
-                <div>Боль: {log.pain_level ?? "—"}</div>
-                <div>Шаги: {log.steps ?? "—"}</div>
+              <div key={log.id} className="rounded-lg border border-border/80 p-4 text-sm">
+                <div className="grid gap-2 sm:grid-cols-6">
+                  <div className="font-semibold">{log.date}</div>
+                  <div>Вес: {log.weight ?? "—"}</div>
+                  <div>Сон: {log.sleep_hours ?? "—"}</div>
+                  <div>Энергия: {log.energy ?? "—"}</div>
+                  <div>Боль: {log.pain_level ?? "—"}</div>
+                  <div>Шаги: {log.steps ?? "—"}</div>
+                </div>
+                <details className="mt-3 rounded-md border border-border/80 bg-fog">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать запись</summary>
+                  <form action={upsertHealthLogAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
+                    <input type="hidden" name="date" value={log.date} />
+                    <NumberField id={`weight-${log.id}`} name="weight" label="Вес, кг" step="0.1" defaultValue={log.weight ?? ""} />
+                    <NumberField id={`sleep-${log.id}`} name="sleepHours" label="Сон, часов" step="0.25" defaultValue={log.sleep_hours ?? ""} />
+                    <div className="space-y-2">
+                      <Label>Энергия</Label>
+                      <Select name="energy" defaultValue={log.energy ? String(log.energy) : ""}>
+                        <option value="">Не указано</option>
+                        <option value="1">1 — очень низкая</option>
+                        <option value="2">2 — низкая</option>
+                        <option value="3">3 — средняя</option>
+                        <option value="4">4 — хорошая</option>
+                        <option value="5">5 — высокая</option>
+                      </Select>
+                    </div>
+                    <NumberField id={`pain-${log.id}`} name="painLevel" label="Боль / ограничения" step="1" defaultValue={log.pain_level ?? ""} />
+                    <NumberField id={`steps-${log.id}`} name="steps" label="Шаги" step="1" defaultValue={log.steps ?? ""} />
+                    <div className="space-y-2">
+                      <Label>Настроение</Label>
+                      <Input name="mood" defaultValue={log.mood ?? ""} />
+                    </div>
+                    <label className="flex items-center gap-2 rounded-lg border border-border/80 p-3 text-sm">
+                      <input type="checkbox" name="workoutDone" defaultChecked={log.workout_done} />
+                      Тренировка была
+                    </label>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Комментарий</Label>
+                      <Textarea name="comment" defaultValue={log.comment ?? ""} />
+                    </div>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <Button type="submit" variant="outline">Сохранить изменения</Button>
+                    </div>
+                  </form>
+                  <form action={deleteHealthLogAction} className="border-t border-border/80 p-3">
+                    <input type="hidden" name="id" value={log.id} />
+                    <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить запись здоровья за ${log.date}?`}>
+                      Удалить запись
+                    </ConfirmSubmitButton>
+                  </form>
+                </details>
               </div>
             ))
           ) : (
@@ -191,11 +236,23 @@ function Metric({ title, value }: { title: string; value: string }) {
   );
 }
 
-function NumberField({ id, name, label, step }: { id: string; name: string; label: string; step: string }) {
+function NumberField({
+  id,
+  name,
+  label,
+  step,
+  defaultValue
+}: {
+  id: string;
+  name: string;
+  label: string;
+  step: string;
+  defaultValue?: string | number;
+}) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={name} type="number" min={0} step={step} />
+      <Input id={id} name={name} type="number" min={0} step={step} defaultValue={defaultValue} />
     </div>
   );
 }

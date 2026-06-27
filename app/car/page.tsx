@@ -1,5 +1,12 @@
 import { redirect } from "next/navigation";
-import { addCarServiceLogAction, upsertCarAction, upsertCarServiceItemAction } from "@/app/actions";
+import {
+  addCarServiceLogAction,
+  deleteCarAction,
+  deleteCarServiceItemAction,
+  deleteCarServiceLogAction,
+  upsertCarAction,
+  upsertCarServiceItemAction
+} from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { getTodayKey } from "@/lib/dates/month";
 import { carStatusLabels, carSystemLabels, formatMoney, getCarServiceState } from "@/lib/practical";
 import { loadCarPage, loadTrackerData } from "@/lib/supabase/data";
@@ -86,6 +94,19 @@ export default async function CarPage() {
                 <Button type="submit">{firstCar ? "Обновить авто" : "Добавить авто"}</Button>
               </div>
             </form>
+            {firstCar ? (
+              <form action={deleteCarAction} className="mt-3">
+                <input type="hidden" name="id" value={firstCar.id} />
+                <ConfirmSubmitButton
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  message={`Удалить авто «${firstCar.name}» вместе с узлами и историей обслуживания?`}
+                >
+                  Удалить авто
+                </ConfirmSubmitButton>
+              </form>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -168,6 +189,53 @@ export default async function CarPage() {
                     <span>След. пробег: {row.state.nextMileage ?? "—"}</span>
                     <span>Осталось км: {row.state.kmLeft ?? "—"}</span>
                   </div>
+                  <details className="mt-4 rounded-md border border-border/80 bg-fog">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать узел</summary>
+                    <form action={upsertCarServiceItemAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
+                      <input type="hidden" name="id" value={row.item.id} />
+                      <div className="space-y-2">
+                        <Label>Авто</Label>
+                        <Select name="carId" defaultValue={row.item.car_id} required>
+                          {carResult.cars.map((car) => (
+                            <option key={car.id} value={car.id}>
+                              {car.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Система</Label>
+                        <Select name="system" defaultValue={row.item.system}>
+                          {systemKeys.map((system) => (
+                            <option key={system} value={system}>
+                              {carSystemLabels[system]}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Название узла</Label>
+                        <Input name="name" defaultValue={row.item.name} required />
+                      </div>
+                      <DateField id={`last-date-${row.item.id}`} name="lastServiceDate" label="Последняя дата" defaultValue={row.item.last_service_date ?? ""} />
+                      <NumberField id={`last-mileage-${row.item.id}`} name="lastServiceMileage" label="Последний пробег" defaultValue={row.item.last_service_mileage ?? ""} />
+                      <NumberField id={`months-${row.item.id}`} name="intervalMonths" label="Интервал, мес." defaultValue={row.item.interval_months ?? ""} />
+                      <NumberField id={`km-${row.item.id}`} name="intervalKm" label="Интервал, км" defaultValue={row.item.interval_km ?? ""} />
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Комментарий</Label>
+                        <Textarea name="comment" defaultValue={row.item.comment ?? ""} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Button type="submit" variant="outline">Сохранить изменения</Button>
+                      </div>
+                    </form>
+                    <form action={deleteCarServiceItemAction} className="border-t border-border/80 p-3">
+                      <input type="hidden" name="id" value={row.item.id} />
+                      <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить узел «${row.item.name}»? История работ сохранится без привязки к узлу.`}>
+                        Удалить узел
+                      </ConfirmSubmitButton>
+                    </form>
+                  </details>
                 </div>
               );
             })
@@ -245,6 +313,12 @@ export default async function CarPage() {
                       {log.service_date} · {car?.name ?? "Авто"} · {log.mileage} км
                     </div>
                     {log.comment ? <p className="mt-2 text-muted-foreground">{log.comment}</p> : null}
+                    <form action={deleteCarServiceLogAction} className="mt-3">
+                      <input type="hidden" name="id" value={log.id} />
+                      <ConfirmSubmitButton type="submit" variant="ghost" size="sm" message={`Удалить запись обслуживания за ${log.service_date}?`}>
+                        Удалить запись
+                      </ConfirmSubmitButton>
+                    </form>
                   </div>
                 );
               })

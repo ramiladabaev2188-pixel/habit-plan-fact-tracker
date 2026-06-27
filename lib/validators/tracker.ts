@@ -159,7 +159,7 @@ export const weeklyReviewSchema = z.object({
 
 export const experimentSchema = z.object({
   id: z.string().uuid().optional(),
-  title: z.string().trim().min(2, "РќР°Р·РІР°РЅРёРµ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р° СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ").max(140),
+  title: z.string().trim().min(2, "Название эксперимента слишком короткое").max(140),
   hypothesis: z.string().trim().max(1000).optional(),
   lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
   startDate: dateKeySchema,
@@ -179,7 +179,7 @@ export const experimentCheckinSchema = z.object({
 
 export const lifeEventSchema = z.object({
   id: z.string().uuid().optional(),
-  title: z.string().trim().min(2, "РќР°Р·РІР°РЅРёРµ СЃРѕР±С‹С‚РёСЏ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ").max(160),
+  title: z.string().trim().min(2, "Название события слишком короткое").max(160),
   description: z.string().trim().max(1200).optional(),
   lifeAreaId: z.string().uuid().or(z.literal("")).optional(),
   goalId: z.string().uuid().or(z.literal("")).optional(),

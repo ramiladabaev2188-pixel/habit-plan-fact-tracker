@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import type * as React from "react";
+import Link from "next/link";
 import { Activity, AlertTriangle, BatteryMedium, CalendarCheck, CarFront, Flag, Sprout, Target, TrendingUp, WalletCards } from "lucide-react";
 import { completeOnboardingAction } from "@/app/actions";
 import { DashboardCumulativePlanFactChart, DashboardPlanFactChart } from "@/components/charts/dashboard-charts";
@@ -15,7 +16,7 @@ import { LocalReminders } from "@/components/shared/local-reminders";
 import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
 import { getMonthDates, getTodayKey, toDateKey } from "@/lib/dates/month";
-import { calculateGrowthStats } from "@/lib/growth";
+import { calculateLifeCenterSnapshot, type LifeCenterSignal } from "@/lib/life-center";
 import {
   calculateCategoryStats,
   calculateDailyStats,
@@ -26,7 +27,8 @@ import {
 import { getMainFocusTask, getRiskTasks } from "@/lib/recommendations";
 import { calculateFinanceSummary, calculateHealthSummary, carStatusLabels, formatMoney, getCarServiceState } from "@/lib/practical";
 import { calculateRhythmSnapshot, getRhythmMilestones } from "@/lib/rhythm";
-import { loadCarPage, loadFinancePage, loadHealthPage, loadTrackerData } from "@/lib/supabase/data";
+import { loadCarPage, loadFinancePage, loadHealthPage, loadTrackerData, loadWorkPage } from "@/lib/supabase/data";
+import { loadPersonalBoardData } from "@/lib/supabase/personal-board-data";
 import { cn, formatPercent, formatScore } from "@/lib/utils";
 
 const badgeVariantByLevel = {
@@ -43,11 +45,13 @@ export default async function DashboardPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const [result, financeResult, healthResult, carResult] = await Promise.all([
+  const [result, financeResult, healthResult, carResult, workResult, boardResult] = await Promise.all([
     loadTrackerData(params.month, { includeGoals: true, includeWeeklyReviews: true, dailyNotesScope: "all" }),
     loadFinancePage(),
     loadHealthPage(),
-    loadCarPage()
+    loadCarPage(),
+    loadWorkPage(),
+    loadPersonalBoardData()
   ]);
 
   if (!result.configured) {
@@ -121,7 +125,31 @@ export default async function DashboardPage({
     forecastPercent: monthStats.forecastPercent,
     targetPercent: selectedMonth.target_percent
   });
-  const growthStats = calculateGrowthStats({ lifeAreas, categories, tasks, plans, facts });
+  const lifeCenter = calculateLifeCenterSnapshot({
+    selectedMonth,
+    lifeAreas,
+    categories,
+    tasks,
+    plans,
+    facts,
+    goals,
+    goalTasks: result.data.goalTasks,
+    weeklyReviews,
+    dailyNotes,
+    experiments: result.data.experiments,
+    experimentCheckins: result.data.experimentCheckins,
+    lifeEvents: result.data.lifeEvents,
+    financeSnapshots: financeResult.error ? [] : financeResult.snapshots,
+    financeGoals: financeResult.error ? [] : financeResult.goals,
+    healthLogs: healthResult.error ? [] : healthResult.logs,
+    cars: carResult.error ? [] : carResult.cars,
+    carServiceItems: carResult.error ? [] : carResult.serviceItems,
+    workProjects: workResult.error ? [] : workResult.projects,
+    workCases: workResult.error ? [] : workResult.cases,
+    workSkills: workResult.error ? [] : workResult.skills,
+    personalBoardTasks: boardResult.error || !boardResult.data ? [] : boardResult.data.boardTasks
+  });
+  const growthStats = lifeCenter.growth;
   const strongArea = growthStats.strongAreas[0] ?? growthStats.areas.filter((area) => area.planScore > 0).sort((a, b) => b.completion - a.completion)[0] ?? null;
   const weakArea = growthStats.weakAreas[0] ?? null;
   const activeGoals = goals.filter((goal) => goal.status === "active").slice(0, 3);
@@ -152,13 +180,7 @@ export default async function DashboardPage({
           return priority[a!.state.status] - priority[b!.state.status];
         });
   const nextCarService = carRows[0] ?? null;
-  const nextStep = focus?.title
-    ? `Закрыть фокус: ${focus.title}`
-    : weakArea
-      ? `Поддержать сферу: ${weakArea.area.name}`
-      : latestWeeklyReview?.next_week_focus
-        ? latestWeeklyReview.next_week_focus
-        : "Сохранить ритм дня и внести факт";
+  const nextStep = lifeCenter.nextBestStep.title;
   const yesterdayKey = shiftDateKey(getTodayKey(), -1);
   const yesterdayPlans = plans.filter((plan) => plan.date === yesterdayKey && plan.planned_score > 0);
   const yesterdayFactKeys = new Set(
@@ -277,7 +299,7 @@ export default async function DashboardPage({
         <ProductSignalCard
           icon={<Sprout className="h-5 w-5" />}
           title="Индекс развития"
-          value={growthStats.totalPlanScore > 0 ? formatPercent(growthStats.overallIndex) : "нет плана"}
+          value={growthStats.totalPlanScore > 0 ? formatPercent(lifeCenter.developmentIndex) : "нет плана"}
           detail={
             weakArea
               ? `Слабая сфера: ${weakArea.area.name}`
@@ -290,7 +312,7 @@ export default async function DashboardPage({
           icon={<Target className="h-5 w-5" />}
           title="Следующий шаг"
           value={nextStep}
-          detail="Что важнее всего сделать дальше"
+          detail={lifeCenter.nextBestStep.detail}
         />
         <ProductSignalCard
           icon={<Flag className="h-5 w-5" />}
@@ -301,8 +323,8 @@ export default async function DashboardPage({
         <ProductSignalCard
           icon={<AlertTriangle className="h-5 w-5" />}
           title="Ближайшие риски"
-          value={riskTasks.length ? `${riskTasks.length} задач` : "нет явных рисков"}
-          detail={riskTasks[0] ? `${riskTasks[0].title}: темп ${formatPercent(riskTasks[0].forecastPercent)}` : "Начатые задачи держат целевой темп"}
+          value={lifeCenter.risks.length ? `${lifeCenter.risks.length} сигналов` : "нет явных рисков"}
+          detail={lifeCenter.risks[0]?.detail ?? "Начатые задачи держат целевой темп"}
         />
         <ProductSignalCard
           icon={<WalletCards className="h-5 w-5" />}
@@ -334,6 +356,24 @@ export default async function DashboardPage({
             detail={latestWeeklyReview.lesson ?? "Открыть недельный отчет"}
           />
         ) : null}
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-3" aria-label="Центр внимания">
+        <SignalPanel
+          title="Что требует внимания"
+          empty="Критичных сигналов нет. Система выглядит связанной."
+          signals={lifeCenter.risks}
+        />
+        <SignalPanel
+          title="Что давно не обновлялось"
+          empty="Практические контуры достаточно свежие."
+          signals={lifeCenter.staleData}
+        />
+        <SignalPanel
+          title="Что не связано"
+          empty="Цели, задачи и сферы связаны между собой."
+          signals={lifeCenter.disconnectedData}
+        />
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]" aria-label="Ритм и достижения">
@@ -527,6 +567,59 @@ function ProductSignalCard({
         </div>
         <div className="mt-4 line-clamp-2 text-2xl font-semibold tracking-tight">{value}</div>
         <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignalPanel({
+  title,
+  empty,
+  signals
+}: {
+  title: string;
+  empty: string;
+  signals: LifeCenterSignal[];
+}) {
+  return (
+    <Card className="section-panel">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {signals.length ? (
+          signals.slice(0, 4).map((signal) => {
+            const content = (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium">{signal.title}</div>
+                  <span
+                    className={cn(
+                      "h-2.5 w-2.5 shrink-0 rounded-full",
+                      signal.level === "danger" && "bg-destructive",
+                      signal.level === "warning" && "bg-warning",
+                      signal.level === "success" && "bg-success",
+                      signal.level === "info" && "bg-info"
+                    )}
+                  />
+                </div>
+                <p className="mt-1 text-sm leading-5 text-muted-foreground">{signal.detail}</p>
+              </>
+            );
+
+            return signal.href ? (
+              <Link key={signal.id} href={signal.href} className="block rounded-lg border border-border/75 p-3 transition-colors hover:bg-muted/45">
+                {content}
+              </Link>
+            ) : (
+              <div key={signal.id} className="rounded-lg border border-border/75 p-3">
+                {content}
+              </div>
+            );
+          })
+        ) : (
+          <p className="rounded-lg border border-dashed border-border p-4 text-sm leading-6 text-muted-foreground">{empty}</p>
+        )}
       </CardContent>
     </Card>
   );

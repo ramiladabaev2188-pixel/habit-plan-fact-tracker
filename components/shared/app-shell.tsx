@@ -36,32 +36,6 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Toaster } from "@/components/shared/toaster";
 import { cn } from "@/lib/utils";
 
-const legacyNavItems = [
-  { href: "/experiments", label: "Эксперименты", icon: FlaskConical },
-  { href: "/timeline", label: "Карта жизни", icon: Milestone },
-  { href: "/growth", label: "Развитие", icon: Sprout },
-  { href: "/finance", label: "Финансы", icon: WalletCards },
-  { href: "/health", label: "Здоровье", icon: HeartPulse },
-  { href: "/car", label: "Авто", icon: CarFront },
-  { href: "/work", label: "Работа", icon: BriefcaseBusiness },
-  { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
-  { href: "/daily", label: "День", icon: ListChecks },
-  { href: "/tasks", label: "Задачи", icon: Rows3 },
-  { href: "/planner", label: "План", icon: ClipboardList },
-  { href: "/calendar", label: "Календарь", icon: CalendarDays },
-  { href: "/analytics", label: "Аналитика", icon: LineChart },
-  { href: "/weekly", label: "Неделя", icon: FileText },
-  { href: "/monthly-report", label: "Отчет", icon: Presentation },
-  { href: "/history", label: "История", icon: History },
-  { href: "/team", label: "Команда", icon: Users },
-  { href: "/goals", label: "Цели", icon: Flag },
-  { href: "/notes", label: "Заметки", icon: NotebookText },
-  { href: "/checks", label: "Проверки", icon: ShieldCheck },
-  { href: "/settings", label: "Настройки", icon: Settings }
-];
-
-void legacyNavItems;
-
 const navItems = [
   { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/daily", label: "День", icon: ListChecks },
@@ -82,10 +56,34 @@ const navItems = [
   { href: "/timeline", label: "Карта жизни", icon: Milestone },
   { href: "/team", label: "Команда", icon: Users },
   { href: "/notes", label: "Заметки", icon: NotebookText },
-  { href: "/checks", label: "Проверки", icon: ShieldCheck },
+  { href: "/checks", label: "Чек-листы", icon: ShieldCheck },
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
+const navGroups = [
+  {
+    title: "Основное",
+    items: ["/dashboard", "/daily", "/planner", "/goals", "/growth"]
+  },
+  {
+    title: "Аналитика",
+    items: ["/analytics", "/weekly", "/monthly-report", "/history", "/timeline", "/experiments"]
+  },
+  {
+    title: "Практика жизни",
+    items: ["/finance", "/health", "/work", "/car"]
+  },
+  {
+    title: "Организация",
+    items: ["/tasks", "/calendar", "/notes", "/checks"]
+  },
+  {
+    title: "Прочее",
+    items: ["/team", "/settings"]
+  }
+];
+
+const navItemByHref = new Map(navItems.map((item) => [item.href, item]));
 const primaryHrefs = new Set(["/dashboard", "/daily", "/planner", "/growth", "/goals"]);
 const mobilePrimaryHrefs = new Set(["/dashboard", "/daily", "/planner", "/growth"]);
 
@@ -199,26 +197,40 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {mobileMoreItems.map((item) => {
-                const active = isActive(item.href);
-                const Icon = item.icon;
+            <div className="grid gap-4 md:grid-cols-2">
+              {navGroups.map((group) => (
+                <section key={group.title} className="rounded-xl border border-border/75 bg-fog/75 p-3">
+                  <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {group.title}
+                  </h2>
+                  <div className="grid gap-2">
+                    {group.items.map((href) => {
+                      const item = navItemByHref.get(href);
+                      if (!item) {
+                        return null;
+                      }
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMoreOpen(false)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg border border-border bg-fog px-3 py-3 text-sm font-medium transition-colors hover:border-foreground/30 hover:bg-card",
-                      active && "border-primary bg-primary text-primary-foreground hover:bg-primary"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" strokeWidth={1.8} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
+                      const active = isActive(item.href);
+                      const Icon = item.icon;
+
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setMoreOpen(false)}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-card",
+                            active && "bg-primary text-primary-foreground hover:bg-primary"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" strokeWidth={1.8} />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           </div>
         </div>

@@ -341,7 +341,7 @@ export async function loadExperimentsPage(filters: ExperimentPageFilters) {
       experiments: [] as Experiment[],
       checkins: [] as ExperimentCheckin[],
       total: 0,
-      error: userError?.message ?? "РќСѓР¶РЅР° Р°РІС‚РѕСЂРёР·Р°С†РёСЏ"
+      error: userError?.message ?? "Нужна авторизация"
     };
   }
 
@@ -388,7 +388,7 @@ export async function loadTimelinePage(filters: TimelinePageFilters) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return { events: [] as LifeEvent[], total: 0, error: userError?.message ?? "РќСѓР¶РЅР° Р°РІС‚РѕСЂРёР·Р°С†РёСЏ" };
+    return { events: [] as LifeEvent[], total: 0, error: userError?.message ?? "Нужна авторизация" };
   }
 
   const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), 80);

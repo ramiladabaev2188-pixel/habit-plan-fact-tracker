@@ -1012,7 +1012,7 @@ export async function upsertWeeklyReviewAction(formData: FormData) {
     .single();
 
   if (monthError || !month) {
-    throw new Error(monthError?.message ?? "РњРµСЃСЏС† РЅРµ РЅР°Р№РґРµРЅ");
+    throw new Error(monthError?.message ?? "Месяц не найден");
   }
 
   const { error } = await supabase.from("weekly_reviews").upsert(
@@ -1090,14 +1090,14 @@ export async function upsertExperimentAction(formData: FormData) {
     : await supabase.from("experiments").insert(payload).select("*").single();
 
   if (result.error || !result.data) {
-    throw new Error(result.error?.message ?? "Р­РєСЃРїРµСЂРёРјРµРЅС‚ РЅРµ СЃРѕС…СЂР°РЅРµРЅ");
+    throw new Error(result.error?.message ?? "Эксперимент не сохранен");
   }
 
   if (result.data.status === "completed") {
     await supabase.from("life_events").insert({
         user_id: userId,
         life_area_id: result.data.life_area_id,
-        title: `Р—Р°РІРµСЂС€РµРЅ СЌРєСЃРїРµСЂРёРјРµРЅС‚: ${result.data.title}`,
+        title: `Завершен эксперимент: ${result.data.title}`,
         description: result.data.conclusion ?? result.data.result_summary,
         event_date: getTodayKey(),
         type: "milestone",
@@ -1143,7 +1143,7 @@ export async function saveExperimentCheckinAction(formData: FormData) {
     .single();
 
   if (experimentError || !experiment) {
-    throw new Error(experimentError?.message ?? "Р­РєСЃРїРµСЂРёРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ");
+    throw new Error(experimentError?.message ?? "Эксперимент не найден");
   }
 
   const { error } = await supabase.from("experiment_checkins").upsert(
@@ -1482,6 +1482,18 @@ export async function upsertFinanceSnapshotAction(formData: FormData) {
   revalidatePath("/finance");
 }
 
+export async function deleteFinanceSnapshotAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("finance_snapshots").delete().eq("id", id).eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/finance");
+}
+
 export async function upsertFinanceGoalAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = financeGoalSchema.parse({
@@ -1518,6 +1530,18 @@ export async function upsertFinanceGoalAction(formData: FormData) {
         .eq("id", parsed.id)
         .eq("user_id", userId)
     : await supabase.from("finance_goals").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/finance");
+}
+
+export async function deleteFinanceGoalAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("finance_goals").delete().eq("id", id).eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
@@ -1563,6 +1587,18 @@ export async function upsertHealthLogAction(formData: FormData) {
   revalidatePath("/health");
 }
 
+export async function deleteHealthLogAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("health_logs").delete().eq("id", id).eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/health");
+}
+
 export async function upsertCarAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = carSchema.parse({
@@ -1596,6 +1632,18 @@ export async function upsertCarAction(formData: FormData) {
         .eq("id", parsed.id)
         .eq("user_id", userId)
     : await supabase.from("cars").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/car");
+}
+
+export async function deleteCarAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("cars").delete().eq("id", id).eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
@@ -1648,6 +1696,18 @@ export async function upsertCarServiceItemAction(formData: FormData) {
         .eq("id", parsed.id)
         .eq("user_id", userId)
     : await supabase.from("car_service_items").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/car");
+}
+
+export async function deleteCarServiceItemAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("car_service_items").delete().eq("id", id).eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
@@ -1718,6 +1778,18 @@ export async function addCarServiceLogAction(formData: FormData) {
   revalidatePath("/car");
 }
 
+export async function deleteCarServiceLogAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("car_service_logs").delete().eq("id", id).eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/car");
+}
+
 export async function upsertWorkProjectAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = workProjectSchema.parse({
@@ -1751,6 +1823,18 @@ export async function upsertWorkProjectAction(formData: FormData) {
         .eq("id", parsed.id)
         .eq("user_id", userId)
     : await supabase.from("work_projects").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
+}
+
+export async function deleteWorkProjectAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("work_projects").delete().eq("id", id).eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
@@ -1809,6 +1893,18 @@ export async function upsertWorkCaseAction(formData: FormData) {
   revalidatePath("/work");
 }
 
+export async function deleteWorkCaseAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("work_cases").delete().eq("id", id).eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
+}
+
 export async function upsertWorkSkillAction(formData: FormData) {
   const { supabase, userId } = await requireUser();
   const parsed = workSkillSchema.parse({
@@ -1839,6 +1935,18 @@ export async function upsertWorkSkillAction(formData: FormData) {
         .eq("id", parsed.id)
         .eq("user_id", userId)
     : await supabase.from("work_skills").insert(payload);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/work");
+}
+
+export async function deleteWorkSkillAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const id = entityIdSchema.parse(formData.get("id"));
+  const { error } = await supabase.from("work_skills").delete().eq("id", id).eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);

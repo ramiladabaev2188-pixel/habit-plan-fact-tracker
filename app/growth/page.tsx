@@ -71,7 +71,7 @@ export default async function GrowthPage({
             <Sprout className="mx-auto h-10 w-10 text-muted-foreground" />
             <div className="mt-4 text-lg font-semibold">Сферы жизни пока не созданы</div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Примените миграцию Supabase: она добавит базовые сферы и свяжет существующие категории.
+              Добавьте первую сферу, цель или регулярное действие, чтобы система начала считать карту развития.
             </p>
           </CardContent>
         </Card>

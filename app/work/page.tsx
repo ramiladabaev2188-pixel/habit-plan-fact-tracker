@@ -1,5 +1,12 @@
 import { redirect } from "next/navigation";
-import { upsertWorkCaseAction, upsertWorkProjectAction, upsertWorkSkillAction } from "@/app/actions";
+import {
+  deleteWorkCaseAction,
+  deleteWorkProjectAction,
+  deleteWorkSkillAction,
+  upsertWorkCaseAction,
+  upsertWorkProjectAction,
+  upsertWorkSkillAction
+} from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { workStatusLabels } from "@/lib/practical";
 import { loadTrackerData, loadWorkPage } from "@/lib/supabase/data";
 import { formatPercent } from "@/lib/utils";
@@ -168,6 +176,40 @@ export default async function WorkPage() {
                   <div className="mt-3 text-sm text-muted-foreground">
                     {project.start_date ?? "без старта"} → {project.due_date ?? "без дедлайна"}
                   </div>
+                  <details className="mt-4 rounded-md border border-border/80 bg-fog">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать проект</summary>
+                    <form action={upsertWorkProjectAction} className="grid gap-3 border-t border-border/80 p-3">
+                      <input type="hidden" name="id" value={project.id} />
+                      <div className="space-y-2">
+                        <Label>Название</Label>
+                        <Input name="title" defaultValue={project.title} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Статус</Label>
+                        <Select name="status" defaultValue={project.status}>
+                          <option value="active">В работе</option>
+                          <option value="paused">Пауза</option>
+                          <option value="completed">Завершен</option>
+                          <option value="archived">Архив</option>
+                        </Select>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <DateField id={`project-start-${project.id}`} name="startDate" label="Старт" defaultValue={project.start_date ?? ""} />
+                        <DateField id={`project-due-${project.id}`} name="dueDate" label="Дедлайн" defaultValue={project.due_date ?? ""} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Описание</Label>
+                        <Textarea name="description" defaultValue={project.description ?? ""} />
+                      </div>
+                      <Button type="submit" variant="outline">Сохранить изменения</Button>
+                    </form>
+                    <form action={deleteWorkProjectAction} className="border-t border-border/80 p-3">
+                      <input type="hidden" name="id" value={project.id} />
+                      <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить рабочий проект «${project.title}»?`}>
+                        Удалить проект
+                      </ConfirmSubmitButton>
+                    </form>
+                  </details>
                 </div>
               ))
             ) : (
@@ -194,6 +236,31 @@ export default async function WorkPage() {
                     </div>
                     <Progress className="mt-3" value={Math.min(progress, 1) * 100} />
                     {skill.comment ? <p className="mt-2 text-sm text-muted-foreground">{skill.comment}</p> : null}
+                    <details className="mt-4 rounded-md border border-border/80 bg-fog">
+                      <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать навык</summary>
+                      <form action={upsertWorkSkillAction} className="grid gap-3 border-t border-border/80 p-3">
+                        <input type="hidden" name="id" value={skill.id} />
+                        <div className="space-y-2">
+                          <Label>Название</Label>
+                          <Input name="name" defaultValue={skill.name} required />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <NumberField id={`skill-level-${skill.id}`} name="level" label="Сейчас" defaultValue={skill.level} min={1} max={10} />
+                          <NumberField id={`skill-target-${skill.id}`} name="targetLevel" label="Цель" defaultValue={skill.target_level} min={1} max={10} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Комментарий</Label>
+                          <Textarea name="comment" defaultValue={skill.comment ?? ""} />
+                        </div>
+                        <Button type="submit" variant="outline">Сохранить изменения</Button>
+                      </form>
+                      <form action={deleteWorkSkillAction} className="border-t border-border/80 p-3">
+                        <input type="hidden" name="id" value={skill.id} />
+                        <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить навык «${skill.name}»?`}>
+                          Удалить навык
+                        </ConfirmSubmitButton>
+                      </form>
+                    </details>
                   </div>
                 );
               })
@@ -233,6 +300,35 @@ export default async function WorkPage() {
                     ))}
                   </div>
                 ) : null}
+                <details className="mt-4 rounded-md border border-border/80 bg-fog">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать кейс</summary>
+                  <form action={upsertWorkCaseAction} className="grid gap-3 border-t border-border/80 p-3">
+                    <input type="hidden" name="id" value={workCase.id} />
+                    <div className="space-y-2">
+                      <Label>Название</Label>
+                      <Input name="title" defaultValue={workCase.title} required />
+                    </div>
+                    <TextAreaField id={`case-problem-${workCase.id}`} name="problem" label="Проблема" defaultValue={workCase.problem ?? ""} />
+                    <TextAreaField id={`case-actions-${workCase.id}`} name="actions" label="Что сделал" defaultValue={workCase.actions ?? ""} />
+                    <TextAreaField id={`case-result-${workCase.id}`} name="result" label="Результат" defaultValue={workCase.result ?? ""} />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <TextAreaField id={`case-before-${workCase.id}`} name="metricsBefore" label="Было" defaultValue={workCase.metrics_before ?? ""} />
+                      <TextAreaField id={`case-after-${workCase.id}`} name="metricsAfter" label="Стало" defaultValue={workCase.metrics_after ?? ""} />
+                    </div>
+                    <TextAreaField id={`case-conclusion-${workCase.id}`} name="conclusion" label="Вывод" defaultValue={workCase.conclusion ?? ""} />
+                    <div className="space-y-2">
+                      <Label>Навыки через запятую</Label>
+                      <Input name="skills" defaultValue={workCase.skills.join(", ")} />
+                    </div>
+                    <Button type="submit" variant="outline">Сохранить изменения</Button>
+                  </form>
+                  <form action={deleteWorkCaseAction} className="border-t border-border/80 p-3">
+                    <input type="hidden" name="id" value={workCase.id} />
+                    <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить кейс «${workCase.title}»?`}>
+                      Удалить кейс
+                    </ConfirmSubmitButton>
+                  </form>
+                </details>
               </div>
             ))
           ) : (
@@ -257,11 +353,21 @@ function Metric({ title, value }: { title: string; value: string }) {
   );
 }
 
-function DateField({ id, name, label }: { id: string; name: string; label: string }) {
+function DateField({
+  id,
+  name,
+  label,
+  defaultValue
+}: {
+  id: string;
+  name: string;
+  label: string;
+  defaultValue?: string;
+}) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={name} type="date" />
+      <Input id={id} name={name} type="date" defaultValue={defaultValue} />
     </div>
   );
 }
@@ -289,11 +395,21 @@ function NumberField({
   );
 }
 
-function TextAreaField({ id, name, label }: { id: string; name: string; label: string }) {
+function TextAreaField({
+  id,
+  name,
+  label,
+  defaultValue
+}: {
+  id: string;
+  name: string;
+  label: string;
+  defaultValue?: string;
+}) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Textarea id={id} name={name} />
+      <Textarea id={id} name={name} defaultValue={defaultValue} />
     </div>
   );
 }

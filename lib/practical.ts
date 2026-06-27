@@ -74,7 +74,7 @@ export function calculateFinanceGoalProgress(goal: FinanceGoal, monthlyFreeCash:
   const remaining = Math.max(0, goal.target_amount - goal.current_amount);
   const percent = goal.target_amount > 0 ? goal.current_amount / goal.target_amount : 0;
   const monthsLeft = goal.due_date
-    ? Math.max(1, differenceInCalendarMonths(parseISO(goal.due_date), today) + 1)
+    ? Math.max(1, differenceInCalendarMonths(parseISO(goal.due_date), today))
     : null;
   const requiredPerMonth = monthsLeft ? remaining / monthsLeft : null;
   const estimatedMonths = monthlyFreeCash > 0 && remaining > 0 ? Math.ceil(remaining / monthlyFreeCash) : null;

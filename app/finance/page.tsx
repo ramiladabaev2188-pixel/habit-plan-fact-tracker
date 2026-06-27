@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
-import { upsertFinanceGoalAction, upsertFinanceSnapshotAction } from "@/app/actions";
+import {
+  deleteFinanceGoalAction,
+  deleteFinanceSnapshotAction,
+  upsertFinanceGoalAction,
+  upsertFinanceSnapshotAction
+} from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
+import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { getTodayKey } from "@/lib/dates/month";
 import { calculateFinanceSummary, formatMoney } from "@/lib/practical";
 import { loadFinancePage, loadTrackerData } from "@/lib/supabase/data";
@@ -168,6 +174,53 @@ export default async function FinancePage() {
                   <span>Нужно/мес.: {item.requiredPerMonth === null ? "нет дедлайна" : formatMoney(item.requiredPerMonth)}</span>
                   <span>Прогноз: {item.estimatedDate ?? "нужен положительный поток"}</span>
                 </div>
+                <details className="mt-4 rounded-md border border-border/80 bg-fog">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Редактировать цель</summary>
+                  <form action={upsertFinanceGoalAction} className="grid gap-3 border-t border-border/80 p-3 sm:grid-cols-2">
+                    <input type="hidden" name="id" value={item.goal.id} />
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Название</Label>
+                      <Input name="title" defaultValue={item.goal.title} required />
+                    </div>
+                    <NumberField id={`target-${item.goal.id}`} name="targetAmount" label="Целевая сумма" required defaultValue={item.goal.target_amount} />
+                    <NumberField id={`current-${item.goal.id}`} name="currentAmount" label="Текущая сумма" defaultValue={item.goal.current_amount} />
+                    <div className="space-y-2">
+                      <Label>Дедлайн</Label>
+                      <Input name="dueDate" type="date" defaultValue={item.goal.due_date ?? ""} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сфера</Label>
+                      <Select name="lifeAreaId" defaultValue={item.goal.life_area_id ?? ""}>
+                        <option value="">Без сферы</option>
+                        {lifeAreas.map((area) => (
+                          <option key={area.id} value={area.id}>
+                            {area.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Связь с целью</Label>
+                      <Select name="goalId" defaultValue={item.goal.goal_id ?? ""}>
+                        <option value="">Без связи</option>
+                        {goals.map((goal) => (
+                          <option key={goal.id} value={goal.id}>
+                            {goal.title}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <Button type="submit" variant="outline">Сохранить изменения</Button>
+                    </div>
+                  </form>
+                  <form action={deleteFinanceGoalAction} className="border-t border-border/80 p-3">
+                    <input type="hidden" name="id" value={item.goal.id} />
+                    <ConfirmSubmitButton type="submit" variant="destructive" size="sm" message={`Удалить финансовую цель «${item.goal.title}»?`}>
+                      Удалить цель
+                    </ConfirmSubmitButton>
+                  </form>
+                </details>
               </div>
             ))
           ) : (
@@ -194,6 +247,7 @@ export default async function FinancePage() {
                     <th>Накопления</th>
                     <th>Долги</th>
                     <th>Инвестиции</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,6 +259,14 @@ export default async function FinancePage() {
                       <td>{formatMoney(snapshot.savings)}</td>
                       <td>{formatMoney(snapshot.debt_total)}</td>
                       <td>{formatMoney(snapshot.investments)}</td>
+                      <td className="text-right">
+                        <form action={deleteFinanceSnapshotAction}>
+                          <input type="hidden" name="id" value={snapshot.id} />
+                          <ConfirmSubmitButton type="submit" variant="ghost" size="sm" message={`Удалить финансовый снимок за ${snapshot.date}?`}>
+                            Удалить
+                          </ConfirmSubmitButton>
+                        </form>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -238,17 +300,19 @@ function NumberField({
   id,
   name,
   label,
-  required
+  required,
+  defaultValue = 0
 }: {
   id: string;
   name: string;
   label: string;
   required?: boolean;
+  defaultValue?: number;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={name} type="number" step="100" min={0} defaultValue={0} required={required} />
+      <Input id={id} name={name} type="number" step="100" min={0} defaultValue={defaultValue} required={required} />
     </div>
   );
 }
