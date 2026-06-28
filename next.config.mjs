@@ -22,6 +22,7 @@ const contentSecurityPolicy = [
 
 const nextConfig = {
   typedRoutes: false,
+  output: "standalone",
   experimental: {
     serverActions: {
       allowedOrigins: serverActionAllowedOrigins
