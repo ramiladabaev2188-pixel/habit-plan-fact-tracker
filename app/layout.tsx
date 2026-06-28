@@ -4,13 +4,13 @@ import { AppShell } from "@/components/shared/app-shell";
 import { ThemeProvider } from "@/components/shared/theme-provider";
 
 export const metadata: Metadata = {
-  title: "Трекер план/факт",
-  description: "Личный трекер привычек с планом и фактом по месяцам",
+  title: "Центр развития",
+  description: "Личный аналитический центр жизни: план, факт, цели, здоровье, финансы и командный ритм",
   manifest: "/manifest.json",
-  applicationName: "План/факт",
+  applicationName: "Центр развития",
   appleWebApp: {
     capable: true,
-    title: "План/факт",
+    title: "Центр развития",
     statusBarStyle: "default"
   },
   icons: {

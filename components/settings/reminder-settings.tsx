@@ -72,7 +72,7 @@ export function ReminderSettings({ preferences }: { preferences: UserPreference 
               variant="secondary"
               disabled={permission !== "granted"}
               onClick={() => {
-                new Notification("План/факт", {
+                new Notification("Центр развития", {
                   body: "Тестовое локальное напоминание работает.",
                   icon: "/icons/icon.svg"
                 });
