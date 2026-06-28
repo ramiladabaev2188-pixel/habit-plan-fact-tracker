@@ -28,6 +28,10 @@ const nextConfig = {
       allowedOrigins: serverActionAllowedOrigins
     }
   },
+  webpack(config) {
+    config.cache = false;
+    return config;
+  },
   async headers() {
     return [
       {
