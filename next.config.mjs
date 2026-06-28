@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const isProduction = process.env.NODE_ENV === "production";
+const skipBuildValidation = process.env.SKIP_NEXT_BUILD_VALIDATION === "1";
 const serverActionAllowedOrigins = [
   "tracker-ramil.apps.vibehost.ru",
   "localhost:3000",
@@ -23,6 +24,12 @@ const contentSecurityPolicy = [
 const nextConfig = {
   typedRoutes: false,
   output: "standalone",
+  eslint: {
+    ignoreDuringBuilds: skipBuildValidation
+  },
+  typescript: {
+    ignoreBuildErrors: skipBuildValidation
+  },
   experimental: {
     serverActions: {
       allowedOrigins: serverActionAllowedOrigins

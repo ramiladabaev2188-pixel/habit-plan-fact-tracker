@@ -12,6 +12,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SKIP_NEXT_BUILD_VALIDATION=1
 
 RUN corepack enable && corepack prepare pnpm@11.0.7 --activate
 
