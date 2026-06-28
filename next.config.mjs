@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const isProduction = process.env.NODE_ENV === "production";
+const serverActionAllowedOrigins = [
+  "tracker-ramil.apps.vibehost.ru",
+  "localhost:3000",
+  "127.0.0.1:3000"
+];
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -17,6 +22,11 @@ const contentSecurityPolicy = [
 
 const nextConfig = {
   typedRoutes: false,
+  experimental: {
+    serverActions: {
+      allowedOrigins: serverActionAllowedOrigins
+    }
+  },
   async headers() {
     return [
       {
