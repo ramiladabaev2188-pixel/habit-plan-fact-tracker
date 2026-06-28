@@ -16,7 +16,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { missReasonLabels } from "@/lib/reflection";
 import { dailyNoteSchema, factValueSchema, missReasonSchema } from "@/lib/validators/tracker";
-import { cn, formatScore } from "@/lib/utils";
+import { cn, formatPercent, formatScore } from "@/lib/utils";
 import type { Category, DailyFact, DailyNote, DailyPlan, Task } from "@/types/domain";
 
 const factOptions = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -226,7 +226,11 @@ export function DailyInput({
   const closePlannedAsDone = useCallback(() => {
     captureUndoSnapshot();
     items.forEach((item, index) => {
-      setFactValue(index, item.task.id, Math.min(2, Math.max(0, item.plan.planned_value)), false);
+      const value =
+        item.task.input_mode === "measured"
+          ? Math.max(0, item.plan.planned_value)
+          : Math.min(2, Math.max(0, item.plan.planned_value));
+      setFactValue(index, item.task.id, value, false);
     });
   }, [captureUndoSnapshot, items, setFactValue]);
 
@@ -436,15 +440,23 @@ export function DailyInput({
                         <h2 className="mt-2 text-base font-semibold tracking-normal">{item.task.title}</h2>
                       </div>
                       <div className="text-right text-sm">
-                        <div className="font-semibold">
-                          {hasFact ? formatScore(current * item.task.weight) : "—"} / {formatScore(item.plan.planned_score)}
-                        </div>
-                        <div className="text-muted-foreground">баллы факт / план</div>
                         {isMeasured ? (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {hasFact ? formatScore(current) : "—"} / {formatScore(item.plan.planned_value)} {taskUnit}
-                          </div>
-                        ) : null}
+                          <>
+                            <div className="font-semibold">
+                              {hasFact ? formatScore(current) : "—"} / {formatScore(item.plan.planned_value)} {taskUnit}
+                            </div>
+                            <div className="text-muted-foreground">
+                              {hasFact && item.plan.planned_value > 0 ? formatPercent(current / item.plan.planned_value) : "факт / план"}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-semibold">
+                              {hasFact ? formatScore(current * item.task.weight) : "—"} / {formatScore(item.plan.planned_score)}
+                            </div>
+                            <div className="text-muted-foreground">баллы факт / план</div>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -492,6 +504,20 @@ export function DailyInput({
                         ))}
                       </div>
                     )}
+
+                    {isMeasured ? (
+                      <details className="rounded-md border border-info/30 bg-info/10 p-3">
+                        <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+                          Подробный расчет баллов
+                        </summary>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Баллы считаются как факт в единицах умножить на вес:{" "}
+                          {hasFact ? formatScore(current) : "—"} × {formatScore(item.task.weight)} ={" "}
+                          {hasFact ? formatScore(current * item.task.weight) : "—"} баллов. План:{" "}
+                          {formatScore(item.plan.planned_score)} баллов.
+                        </p>
+                      </details>
+                    ) : null}
 
                     <details className="rounded-md border border-border/70 bg-card/70 p-3">
                       <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
@@ -564,7 +590,7 @@ export function DailyInput({
         </Card>
       ) : null}
 
-      <Card className="section-panel">
+      <Card id="daily-rhythm" className="section-panel">
         <CardHeader>
           <CardTitle>Ритм дня</CardTitle>
         </CardHeader>

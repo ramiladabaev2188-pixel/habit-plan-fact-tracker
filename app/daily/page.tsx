@@ -84,13 +84,49 @@ export default async function DailyPage({
     goals,
     goalTasks
   });
+  const unlinkedCategories = [
+    ...new Map(
+      items
+        .filter((item) => item.category && !item.category.life_area_id)
+        .map((item) => [item.category!.id, item.category!])
+    ).values()
+  ];
+  const filledTodayCount = items.filter((item) => item.fact).length;
+  const mainNextStep =
+    !items.length
+      ? {
+          title: "Собрать план на день",
+          detail: "На выбранную дату нет плановых действий. Добавьте задачу или сгенерируйте план.",
+          href: `/planner?month=${selectedMonth.id}`,
+          cta: "Перейти к планированию"
+        }
+      : filledTodayCount < items.length
+        ? {
+            title: "Закрыть факт за сегодня",
+            detail: `Заполнено ${filledTodayCount} из ${items.length}. Сначала внесите факт, затем смотрите аналитику.`,
+            href: "#daily-input",
+            cta: "К вводу факта"
+          }
+        : focusTask && focusTask.requiredPerDay > 0
+          ? {
+              title: focusTask.title,
+              detail: `Главный фокус месяца: нужно ${formatScore(focusTask.requiredPerDay)} балла в день.`,
+              href: "/dashboard",
+              cta: "Открыть дашборд"
+            }
+          : {
+              title: "День закрыт",
+              detail: "Факт заполнен. Следующий шаг — коротко отметить ресурс и вывод дня.",
+              href: "#daily-rhythm",
+              cta: "К ритму дня"
+            };
 
   return (
     <div className="app-page app-page-with-rail daily-page">
       <div className="workspace-header">
         <div>
           <div className="page-kicker">Ежедневный ритм</div>
-          <h1 className="workspace-title mt-1">День</h1>
+          <h1 className="workspace-title mt-1">Сегодня</h1>
           <p className="workspace-subtitle">{formatDayFull(selectedDate)}. Быстро зафиксируйте факт и оставьте короткую заметку.</p>
         </div>
         <form className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] lg:w-auto lg:grid-cols-[220px_180px_auto]" action="/daily">
@@ -111,6 +147,24 @@ export default async function DailyPage({
           <Button type="submit" className="self-end">Открыть</Button>
         </form>
       </div>
+
+      <section className="signal-panel grid gap-4 lg:grid-cols-[1.1fr_0.9fr_auto]" aria-label="Сейчас главное">
+        <div>
+          <div className="page-kicker">Сейчас главное</div>
+          <h2 className="mt-2 text-2xl font-semibold tracking-normal">{mainNextStep.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{mainNextStep.detail}</p>
+        </div>
+        <div className="rounded-md border border-border/75 bg-card/70 p-4">
+          <div className="text-sm text-muted-foreground">Статус дня</div>
+          <div className="data-value mt-2 text-3xl">{formatPercent(dayStats.completion)}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {filledTodayCount} из {items.length} фактов заполнено
+          </div>
+        </div>
+        <Button asChild className="self-end">
+          <Link href={mainNextStep.href}>{mainNextStep.cta}</Link>
+        </Button>
+      </section>
 
       <section className="daily-score-rail" aria-label="Итог дня">
         <div className="daily-score-cell">
@@ -177,15 +231,6 @@ export default async function DailyPage({
 
       {items.length ? (
         <>
-          <DailyInput
-            monthId={selectedMonth.id}
-            date={selectedDate}
-            items={items}
-            yesterdayFacts={yesterdayFacts}
-            dailyNote={dayNote}
-            readOnly={selectedMonth.status === "closed"}
-          />
-
           <section className="grid gap-3 lg:grid-cols-3" aria-label="Сегодняшний вклад">
             <div className="signal-panel lg:col-span-2">
               <div className="font-semibold">Сегодняшний вклад</div>
@@ -209,6 +254,28 @@ export default async function DailyPage({
                   <p className="text-sm text-muted-foreground">Пока нет факта по задачам, связанным со сферами.</p>
                 )}
               </div>
+              {unlinkedCategories.length ? (
+                <div className="mt-4 rounded-md border border-warning/35 bg-warning/10 p-3">
+                  <div className="font-medium">Есть категории без сферы жизни</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {unlinkedCategories.map((category) => category.name).join(", ")} не попадают в индекс развития, пока вы не свяжете их со сферой.
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="mt-3">
+                    <Link href="/planner">Связать со сферой</Link>
+                  </Button>
+                </div>
+              ) : null}
+              {!lifeAreas.length ? (
+                <div className="mt-4 rounded-md border border-info/35 bg-info/10 p-3">
+                  <div className="font-medium">Сферы жизни не созданы</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Создайте сферы, чтобы Today показывал вклад дня в развитие, а не только баллы месяца.
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="mt-3">
+                    <Link href="/growth">Создать сферы жизни</Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <div className="signal-panel">
               <div className="font-semibold">Цели и слабое место</div>
@@ -231,6 +298,16 @@ export default async function DailyPage({
               ) : null}
             </div>
           </section>
+
+          <div id="daily-input" />
+          <DailyInput
+            monthId={selectedMonth.id}
+            date={selectedDate}
+            items={items}
+            yesterdayFacts={yesterdayFacts}
+            dailyNote={dayNote}
+            readOnly={selectedMonth.status === "closed"}
+          />
         </>
       ) : (
         <div className="signal-panel border-info/30 bg-info/10">
@@ -263,7 +340,7 @@ function calculateDayContribution({
   items: Array<{
     task: { id: string; category_id: string | null };
     plan: { planned_score: number };
-    category: { life_area_id?: string | null } | null;
+    category: { id: string; name: string; life_area_id?: string | null } | null;
   }>;
   facts: Array<{ task_id: string; date: string; actual_score: number }>;
   selectedDate: string;

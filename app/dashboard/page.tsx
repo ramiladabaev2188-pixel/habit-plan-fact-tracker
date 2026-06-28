@@ -250,6 +250,31 @@ export default async function DashboardPage({
         </section>
       ) : null}
 
+      <section className="signal-panel grid gap-4 lg:grid-cols-[1.15fr_0.85fr_auto]" aria-labelledby="now-main-heading">
+        <div>
+          <div className="page-kicker">Сейчас главное</div>
+          <h2 id="now-main-heading" className="mt-2 text-2xl font-semibold tracking-normal">{nextStep}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{lifeCenter.nextBestStep.detail}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="rounded-md border border-border/75 bg-card/70 p-3">
+            <div className="text-xs text-muted-foreground">Главный разрыв</div>
+            <div className="mt-1 font-medium">
+              {weakArea ? weakArea.area.name : focus?.title ?? "Явного провала нет"}
+            </div>
+          </div>
+          <div className="rounded-md border border-border/75 bg-card/70 p-3">
+            <div className="text-xs text-muted-foreground">Положительный сигнал</div>
+            <div className="mt-1 font-medium">
+              {strongArea ? strongArea.area.name : milestones[0]?.label ?? "Система держится"}
+            </div>
+          </div>
+        </div>
+        <Button asChild className="self-end">
+          <Link href={lifeCenter.nextBestStep.href ?? "/daily"}>Сделать шаг</Link>
+        </Button>
+      </section>
+
       <section className="dashboard-hero-grid" aria-labelledby="focus-heading">
         <div className="dashboard-focus-stage">
           <div className="flex items-start justify-between gap-4">

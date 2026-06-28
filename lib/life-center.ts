@@ -173,32 +173,44 @@ export function calculateLifeCenterSnapshot(input: LifeCenterInput): LifeCenterS
     risks.push(item);
   }
 
+  const yesterday = shiftDateKey(today, -1);
+  const focusStep: LifeCenterSignal | null = focusTask
+    ? {
+        id: "focus-task",
+        title: focusTask.title,
+        detail: `Главный фокус дня: нужно ${formatNumber(focusTask.requiredPerDay)} балла в день.`,
+        level: "warning",
+        href: "/daily"
+      }
+    : null;
+  const weeklyStep: LifeCenterSignal | null = latestWeeklyReview?.next_week_focus
+    ? {
+        id: "weekly-focus",
+        title: latestWeeklyReview.next_week_focus,
+        detail: "Фокус взят из последнего недельного разбора.",
+        level: "info",
+        href: "/weekly"
+      }
+    : null;
+  const defaultStep: LifeCenterSignal = {
+    id: "daily-fact",
+    title: "Внести факт за сегодня",
+    detail: "Ежедневный ввод держит систему развития актуальной.",
+    level: "success",
+    href: "/daily"
+  };
   const nextBestStep =
+    getMissingFactNextStep(input, yesterday, "yesterday-fact", "Заполнить вчерашний день") ??
+    getMissingFactNextStep(input, today, "today-fact", "Внести факт за сегодня") ??
+    getGoalWithoutTasksNextStep(input.goals, input.goalTasks) ??
+    getTaskWithoutPlanNextStep(input.tasks, input.plans) ??
+    getDisconnectedNextStep(disconnectedData) ??
+    focusStep ??
     getSystemRiskNextStep(risks) ??
+    getStaleNextStep(staleData) ??
     getPersonalBoardNextStep(input.personalBoardTasks ?? []) ??
-    (focusTask
-      ? {
-          id: "focus-task",
-          title: focusTask.title,
-          detail: `Главный фокус дня: нужно ${formatNumber(focusTask.requiredPerDay)} балла в день.`,
-          level: "warning" as const,
-          href: "/daily"
-        }
-      : latestWeeklyReview?.next_week_focus
-        ? {
-            id: "weekly-focus",
-            title: latestWeeklyReview.next_week_focus,
-            detail: "Фокус взят из последнего недельного разбора.",
-            level: "info" as const,
-            href: "/weekly"
-          }
-        : {
-            id: "daily-fact",
-            title: "Внести факт за сегодня",
-            detail: "Ежедневный ввод держит систему развития актуальной.",
-            level: "success" as const,
-            href: "/daily"
-          });
+    weeklyStep ??
+    defaultStep;
 
   return {
     today,
@@ -377,8 +389,8 @@ function findStaleData(input: LifeCenterInput, today: string): LifeCenterSignal[
   if (!latestExperimentDate || daysBetween(latestExperimentDate, today) > 14) {
     signals.push({
       id: "stale-experiments",
-      title: "Р­РєСЃРїРµСЂРёРјРµРЅС‚С‹ РЅРµ РѕР±РЅРѕРІР»СЏР»РёСЃСЊ",
-      detail: latestExperimentDate ? `РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: ${latestExperimentDate}.` : "РќРµС‚ Р°РєС‚РёРІРЅС‹С… РїСЂРѕРІРµСЂРѕРє РіРёРїРѕС‚РµР·.",
+      title: "Эксперименты давно не обновлялись",
+      detail: latestExperimentDate ? `Последнее обновление: ${latestExperimentDate}.` : "Нет активных проверок гипотез.",
       level: "info",
       href: "/experiments"
     });
@@ -386,22 +398,11 @@ function findStaleData(input: LifeCenterInput, today: string): LifeCenterSignal[
   if (!latestEventDate || daysBetween(latestEventDate, today) > 30) {
     signals.push({
       id: "stale-timeline",
-      title: "РљР°СЂС‚Р° Р¶РёР·РЅРё РЅРµ РІРµРґРµС‚СЃСЏ",
-      detail: latestEventDate ? `РџРѕСЃР»РµРґРЅРµРµ СЃРѕР±С‹С‚РёРµ: ${latestEventDate}.` : "РќРµС‚ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹С… РІР°Р¶РЅС‹С… СЃРѕР±С‹С‚РёР№.",
+      title: "Карта жизни не ведется",
+      detail: latestEventDate ? `Последнее событие: ${latestEventDate}.` : "Нет зафиксированных важных событий.",
       level: "info",
       href: "/timeline"
     });
-  }
-
-  for (const signal of signals) {
-    if (signal.id === "stale-experiments") {
-      signal.title = "Эксперименты давно не обновлялись";
-      signal.detail = latestExperimentDate ? `Последнее обновление: ${latestExperimentDate}.` : "Нет активных проверок гипотез.";
-    }
-    if (signal.id === "stale-timeline") {
-      signal.title = "Карта жизни не ведется";
-      signal.detail = latestEventDate ? `Последнее событие: ${latestEventDate}.` : "Нет зафиксированных важных событий.";
-    }
   }
 
   for (const signal of signals) {
@@ -470,6 +471,83 @@ function getSystemRiskNextStep(risks: LifeCenterSignal[]): LifeCenterSignal | nu
   );
 }
 
+function getMissingFactNextStep(input: LifeCenterInput, date: string, id: string, title: string): LifeCenterSignal | null {
+  const plans = input.plans.filter((plan) => plan.date === date && plan.planned_score > 0);
+  if (!plans.length) {
+    return null;
+  }
+
+  const factKeys = new Set(input.facts.filter((fact) => fact.date === date).map((fact) => fact.task_id));
+  const missingCount = plans.filter((plan) => !factKeys.has(plan.task_id)).length;
+  if (!missingCount) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    detail: `${missingCount} плановых действий без факта. Сначала закройте ввод, затем анализируйте риски.`,
+    level: id === "yesterday-fact" ? "warning" : "info",
+    href: `/daily?date=${date}`
+  };
+}
+
+function getGoalWithoutTasksNextStep(goals: Goal[], goalTasks: GoalTask[]): LifeCenterSignal | null {
+  const linkedGoalIds = new Set(goalTasks.map((relation) => relation.goal_id));
+  const goal = [...goals]
+    .filter((item) => item.status === "active" && item.progress_mode !== "manual_value" && !linkedGoalIds.has(item.id))
+    .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority))[0];
+
+  if (!goal) {
+    return null;
+  }
+
+  return {
+    id: `goal-without-tasks-${goal.id}`,
+    title: `Связать цель «${goal.title}» с действиями`,
+    detail: "Цель есть, но система не понимает, какие ежедневные задачи ее двигают.",
+    level: "info",
+    href: "/goals"
+  };
+}
+
+function getTaskWithoutPlanNextStep(tasks: Task[], plans: DailyPlan[]): LifeCenterSignal | null {
+  const plannedTaskIds = new Set(plans.filter((plan) => plan.planned_score > 0).map((plan) => plan.task_id));
+  const task = tasks.find((item) => item.is_active && !plannedTaskIds.has(item.id));
+
+  if (!task) {
+    return null;
+  }
+
+  return {
+    id: `task-without-plan-${task.id}`,
+    title: `Запланировать «${task.title}»`,
+    detail: "Активная задача есть, но в текущем месяце у нее нет плановых дней.",
+    level: "info",
+    href: "/planner"
+  };
+}
+
+function getDisconnectedNextStep(signals: LifeCenterSignal[]): LifeCenterSignal | null {
+  return (
+    signals.find((signal) => signal.id === "categories-without-area") ??
+    signals.find((signal) => signal.id === "tasks-without-category") ??
+    signals.find((signal) => signal.id === "goals-without-area") ??
+    null
+  );
+}
+
+function getStaleNextStep(signals: LifeCenterSignal[]): LifeCenterSignal | null {
+  return (
+    signals.find((signal) => signal.id === "stale-health") ??
+    signals.find((signal) => signal.id === "stale-finance") ??
+    signals.find((signal) => signal.id === "stale-work") ??
+    signals.find((signal) => signal.id === "stale-experiments") ??
+    signals[0] ??
+    null
+  );
+}
+
 function getPersonalBoardNextStep(tasks: PersonalBoardTask[]): LifeCenterSignal | null {
   const activeTasks = tasks
     .filter((task) => !task.is_archived && !task.completed_at)
@@ -516,6 +594,15 @@ function daysBetween(from: string, to: string) {
   const start = new Date(`${from}T00:00:00`).getTime();
   const end = new Date(`${to}T00:00:00`).getTime();
   return Math.floor((end - start) / 86_400_000);
+}
+
+function shiftDateKey(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(year, month - 1, day + days);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function averageDefined(values: Array<number | null>) {

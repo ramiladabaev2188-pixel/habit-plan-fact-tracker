@@ -53,6 +53,16 @@ type InitiativeProgress = {
   status: string;
 };
 
+type TeamActivityFeedItem = {
+  id: string;
+  name: string;
+  title: string;
+  value: number;
+  unit: string;
+  date: string;
+  note: string | null;
+};
+
 export default async function TeamPage({
   searchParams
 }: {
@@ -132,6 +142,21 @@ export default async function TeamPage({
     forecastPercent: member.forecastPercent,
     factScore: member.factScore
   }));
+  const closestWin = getClosestTeamWin(goals, challenges);
+  const teamBadges = getTeamBadges({
+    forecastPercent: stats.forecastPercent,
+    activeMembers: stats.activeMembers,
+    membersWithPlan: stats.membersWithPlan,
+    goals,
+    challenges
+  });
+  const feed = getTeamActivityFeed({
+    goals: teamGoals,
+    challenges: teamChallenges,
+    goalContributions: teamGoalContributions,
+    challengeCheckins: teamChallengeCheckins,
+    profileMap
+  });
 
   return (
     <div className="app-page team-page">
@@ -208,6 +233,55 @@ export default async function TeamPage({
           </div>
         </section>
       )}
+
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]" aria-label="Командная мотивация">
+        <Card className="section-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-signal" /> До следующей победы</CardTitle>
+            <CardDescription>Ближайшая общая планка, которую можно закрыть без смешивания с личными планами.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {closestWin ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold">{closestWin.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Осталось {formatScore(closestWin.remaining)} {closestWin.unit}
+                    </div>
+                  </div>
+                  <Badge variant={closestWin.kind === "challenge" ? "over" : "info"}>
+                    {closestWin.kind === "challenge" ? "Челлендж" : "Цель"}
+                  </Badge>
+                </div>
+                <Progress value={Math.min(closestWin.percent, 1) * 100} />
+                <div className="text-sm text-muted-foreground">
+                  Уже сделано {formatScore(closestWin.value)} из {formatScore(closestWin.target)} {closestWin.unit}.
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed p-5 text-sm text-muted-foreground">
+                Нет активной командной планки. Создайте челлендж на неделю или общую цель месяца.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="section-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /> Бейджи команды</CardTitle>
+            <CardDescription>Легкие статусы по текущему месяцу. Без штрафов и рейтинга людей.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-2">
+            {teamBadges.map((badge) => (
+              <div key={badge.title} className="rounded-md border border-border/75 bg-card/70 p-3">
+                <div className="font-medium">{badge.title}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{badge.detail}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <Card className="section-panel">
@@ -289,28 +363,56 @@ export default async function TeamPage({
           </CardContent>
         </Card>
 
-        <Card className="section-panel">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Flag className="h-5 w-5 text-warning" /> Точки внимания</CardTitle>
-            <CardDescription>Только задачи с прогнозом ниже целевого темпа, а не обычное отставание начала месяца.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {stats.riskTasks.length ? stats.riskTasks.map((task) => (
-              <article key={`${task.userId}-${task.title}`} className="list-row">
-                <div className="text-sm font-semibold">{task.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{task.memberName}</div>
-                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                  <span>Прогноз {formatPercent(task.forecastPercent)}</span>
-                  <span>{formatScore(task.requiredPerDay)} в день</span>
+        <div className="space-y-4">
+          <Card className="section-panel">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Flag className="h-5 w-5 text-warning" /> Точки внимания</CardTitle>
+              <CardDescription>Только задачи с прогнозом ниже целевого темпа, а не обычное отставание начала месяца.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {stats.riskTasks.length ? stats.riskTasks.map((task) => (
+                <article key={`${task.userId}-${task.title}`} className="list-row">
+                  <div className="text-sm font-semibold">{task.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{task.memberName}</div>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                    <span>Прогноз {formatPercent(task.forecastPercent)}</span>
+                    <span>{formatScore(task.requiredPerDay)} в день</span>
+                  </div>
+                </article>
+              )) : (
+                <div className="rounded-md border border-dashed border-success/35 bg-success/10 p-4 text-sm text-muted-foreground">
+                  Сейчас нет задач с риском по прогнозу. Это здоровый сигнал: команда не путает будущий план с сегодняшним отставанием.
                 </div>
-              </article>
-            )) : (
-              <div className="rounded-md border border-dashed border-success/35 bg-success/10 p-4 text-sm text-muted-foreground">
-                Сейчас нет задач с риском по прогнозу. Это здоровый сигнал: команда не путает будущий план с сегодняшним отставанием.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="section-panel">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Лента активности</CardTitle>
+              <CardDescription>Последние вклады в общие цели и челленджи.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {feed.length ? feed.map((item) => (
+                <article key={item.id} className="rounded-md border border-border/75 bg-card/70 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">{item.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{item.title}</div>
+                    </div>
+                    <Badge variant="outline">{formatScore(item.value)} {item.unit}</Badge>
+                  </div>
+                  {item.note ? <p className="mt-2 text-xs text-muted-foreground">{item.note}</p> : null}
+                  <div className="mt-2 text-[11px] text-muted-foreground">{formatDate(item.date)}</div>
+                </article>
+              )) : (
+                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  Вкладов пока нет. Добавьте первый вклад в цель или челлендж.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <details className="section-panel overflow-hidden">
@@ -397,6 +499,94 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 function CreateTeamForm() { return <form action={createTeamAction} className="grid gap-3"><div className="space-y-2"><Label htmlFor="team-name">Название</Label><Input id="team-name" name="name" required placeholder="Например, Команда роста" /></div><div className="space-y-2"><Label htmlFor="team-description">Описание</Label><Textarea id="team-description" name="description" placeholder="Для чего собираемся и какой ритм держим" /></div><Button type="submit"><Users className="h-4 w-4" /> Создать команду</Button></form>; }
 
 function toInitiativeProgress<T extends { id: string; title: string; description: string | null; unit: string; target_value: number; due_date: string | null; status: string }, C extends { value: number }>(items: T[], contributions: C[], relationKey: "goal_id" | "challenge_id"): InitiativeProgress[] { return items.map((item) => { const value = contributions.filter((contribution) => (contribution as C & Record<string, string>)[relationKey] === item.id).reduce((sum, contribution) => sum + contribution.value, 0); return { id: item.id, title: item.title, description: item.description, unit: item.unit, target: item.target_value, value, percent: item.target_value > 0 ? value / item.target_value : 0, dueDate: item.due_date, status: item.status }; }); }
+
+function getClosestTeamWin(goals: InitiativeProgress[], challenges: InitiativeProgress[]) {
+  return [
+    ...goals.map((item) => ({ ...item, kind: "goal" as const })),
+    ...challenges.map((item) => ({ ...item, kind: "challenge" as const }))
+  ]
+    .filter((item) => item.status === "active" && item.target > 0 && item.value < item.target)
+    .map((item) => ({ ...item, remaining: Math.max(0, item.target - item.value) }))
+    .sort((a, b) => a.remaining - b.remaining || b.percent - a.percent)[0] ?? null;
+}
+
+function getTeamBadges({
+  forecastPercent,
+  activeMembers,
+  membersWithPlan,
+  goals,
+  challenges
+}: {
+  forecastPercent: number;
+  activeMembers: number;
+  membersWithPlan: number;
+  goals: InitiativeProgress[];
+  challenges: InitiativeProgress[];
+}) {
+  const badges = [
+    forecastPercent >= 0.8
+      ? { title: "Ритм держится", detail: "Командный прогноз выше целевого правила 80%." }
+      : { title: "Нужен общий слот", detail: "Командный прогноз ниже 80%, лучше выбрать один общий фокус." },
+    activeMembers > 0 && membersWithPlan === activeMembers
+      ? { title: "Все в системе", detail: "У каждого участника есть личный месяц на выбранный период." }
+      : { title: "Не все подключены", detail: "Часть участников пока без плана на этот месяц." }
+  ];
+  const completed = [...goals, ...challenges].filter((item) => item.percent >= 1).length;
+  badges.push(
+    completed
+      ? { title: "Есть победы", detail: `${completed} общих инициатив уже закрыты.` }
+      : { title: "Первая победа впереди", detail: "Выберите короткий челлендж, чтобы быстро получить общий результат." }
+  );
+
+  return badges;
+}
+
+function getTeamActivityFeed({
+  goals,
+  challenges,
+  goalContributions,
+  challengeCheckins,
+  profileMap
+}: {
+  goals: Array<{ id: string; title: string; unit: string }>;
+  challenges: Array<{ id: string; title: string; unit: string }>;
+  goalContributions: Array<{ id: string; goal_id: string; user_id: string; value: number; note: string | null; date: string; created_at: string }>;
+  challengeCheckins: Array<{ id: string; challenge_id: string; user_id: string; value: number; note: string | null; date: string; created_at: string }>;
+  profileMap: Map<string, { name?: string | null; email?: string | null }>;
+}): TeamActivityFeedItem[] {
+  const goalById = new Map(goals.map((goal) => [goal.id, goal]));
+  const challengeById = new Map(challenges.map((challenge) => [challenge.id, challenge]));
+  const nameOf = (userId: string) => profileMap.get(userId)?.name || profileMap.get(userId)?.email || "Участник";
+
+  return [
+    ...goalContributions.map((item) => {
+      const goal = goalById.get(item.goal_id);
+      return {
+        id: `goal-${item.id}`,
+        name: nameOf(item.user_id),
+        title: goal ? `Цель: ${goal.title}` : "Командная цель",
+        value: item.value,
+        unit: goal?.unit ?? "ед.",
+        date: item.date,
+        note: item.note
+      };
+    }),
+    ...challengeCheckins.map((item) => {
+      const challenge = challengeById.get(item.challenge_id);
+      return {
+        id: `challenge-${item.id}`,
+        name: nameOf(item.user_id),
+        title: challenge ? `Челлендж: ${challenge.title}` : "Командный челлендж",
+        value: item.value,
+        unit: challenge?.unit ?? "ед.",
+        date: item.date,
+        note: item.note
+      };
+    })
+  ]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 6);
+}
 
 function sumByUser(items: { user_id: string; value: number }[], userId: string) { return items.filter((item) => item.user_id === userId).reduce((sum, item) => sum + item.value, 0); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`)); }

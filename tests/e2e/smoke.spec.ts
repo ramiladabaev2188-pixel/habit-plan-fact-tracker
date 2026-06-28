@@ -7,9 +7,13 @@ const authenticatedRoutes = [
   "/dashboard",
   "/daily",
   "/planner",
+  "/calendar",
   "/goals",
   "/growth",
   "/analytics",
+  "/weekly",
+  "/monthly-report",
+  "/history",
   "/finance",
   "/health",
   "/car",
@@ -17,6 +21,10 @@ const authenticatedRoutes = [
   "/experiments",
   "/timeline",
   "/tasks",
+  "/notes",
+  "/checks",
+  "/team",
+  "/team/board",
   "/settings"
 ];
 
@@ -59,8 +67,31 @@ test.describe("product smoke", () => {
 
     await signIn(page);
     await page.goto("/daily");
-    await expect(page.locator("body")).toContainText(/День|Быстрый ввод|Создать план|Добавить задачу/i);
+    await expect(page.locator("body")).toContainText(/Сегодня|Быстрый ввод|Создать план|Добавить задачу/i);
     await expectNoConsoleErrors(page);
+  });
+
+  test("all sections menu is usable and closes predictably", async ({ page }) => {
+    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated navigation tests.");
+
+    await signIn(page);
+    await page.goto("/dashboard");
+
+    await openAllSections(page);
+    const dialog = page.getByRole("dialog", { name: /Все разделы/i });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Ежедневно");
+    await expect(dialog).toContainText("Практика жизни");
+    await expect(dialog).toContainText("Команда");
+    await expect(dialog.getByRole("link", { name: "Планирование" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    await openAllSections(page);
+    await expect(dialog).toBeVisible();
+    await page.locator(".app-all-nav-backdrop").click({ position: { x: 8, y: 8 } });
+    await expect(dialog).toBeHidden();
   });
 
   test("goal to daily to dashboard lifecycle smoke", async ({ page }) => {
@@ -71,16 +102,20 @@ test.describe("product smoke", () => {
     await expect(page.locator("body")).toContainText(/Цели|Зачем|Версия себя/i);
 
     await page.goto("/planner");
-    await expect(page.locator("body")).toContainText(/План|Месяц|Задачи/i);
+    await expect(page.locator("body")).toContainText(/Планирование|Месяц|Задачи/i);
 
     await page.goto("/daily");
-    await expect(page.locator("body")).toContainText(/День|Итог дня|Сегодняшний вклад|Создать план/i);
+    await expect(page.locator("body")).toContainText(/Сегодня|Итог дня|Сегодняшний вклад|Создать план/i);
 
     await page.goto("/dashboard");
     await expect(page.locator("body")).toContainText(/Дашборд|Следующий шаг|Индекс развития|Главный фокус/i);
     await expectNoConsoleErrors(page);
   });
 });
+
+async function openAllSections(page: Page) {
+  await page.getByRole("button", { name: /Еще|Открыть остальные разделы/i }).first().click();
+}
 
 async function signIn(page: Page) {
   await page.goto("/login");

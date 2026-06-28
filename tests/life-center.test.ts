@@ -237,12 +237,51 @@ describe("life center", () => {
     });
 
     expect(snapshot.developmentIndex).toBe(0.5);
-    expect(snapshot.nextBestStep.title).toBe(carItem.name);
+    expect(snapshot.nextBestStep.id).toBe("today-fact");
+    expect(snapshot.nextBestStep.title).toBe("Внести факт за сегодня");
     expect(snapshot.risks.map((risk) => risk.id)).toEqual(
       expect.arrayContaining(["month-forecast", "finance-negative-cashflow", "health-gentle-mode", "car-service-1"])
     );
     expect(snapshot.disconnectedData.map((signal) => signal.id)).toContain("tasks-without-category");
     expect(snapshot.staleData.map((signal) => signal.id)).toContain("stale-work");
+  });
+
+  it("does not let a personal board task override missing daily facts", () => {
+    const boardTask = {
+      id: "board-task-urgent",
+      user_id: userId,
+      board_id: "board-1",
+      column_id: "column-1",
+      title: "Срочная личная задача",
+      description: null,
+      priority: "urgent",
+      due_date: now,
+      goal_id: null,
+      habit_task_id: null,
+      month_id: null,
+      sort_order: 1,
+      is_archived: false,
+      completed_at: null,
+      created_at: now,
+      updated_at: now
+    } satisfies PersonalBoardTask;
+
+    const snapshot = calculateLifeCenterSnapshot({
+      selectedMonth: month,
+      lifeAreas: [healthArea],
+      categories: [category],
+      tasks: [task],
+      plans: plans.filter((plan) => plan.task_id === task.id),
+      facts: facts.filter((fact) => fact.task_id === task.id && fact.date !== now),
+      goals: [],
+      goalTasks: [],
+      weeklyReviews: [],
+      dailyNotes: [],
+      personalBoardTasks: [boardTask],
+      today: now
+    });
+
+    expect(snapshot.nextBestStep.id).toBe("today-fact");
   });
 
   it("calculates manual and linked goal progress without mixing progress modes", () => {

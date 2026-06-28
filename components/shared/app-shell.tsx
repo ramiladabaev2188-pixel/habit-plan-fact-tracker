@@ -37,24 +37,25 @@ import { Toaster } from "@/components/shared/toaster";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/daily", label: "Сегодня", icon: ListChecks },
-  { href: "/planner", label: "План", icon: ClipboardList },
-  { href: "/growth", label: "Развитие", icon: Sprout },
-  { href: "/goals", label: "Цели", icon: Flag },
+  { href: "/dashboard", label: "Дашборд", icon: BarChart3 },
   { href: "/tasks", label: "Задачи", icon: Rows3 },
-  { href: "/calendar", label: "Календарь", icon: CalendarDays },
+  { href: "/goals", label: "Цели", icon: Flag },
   { href: "/analytics", label: "Аналитика", icon: LineChart },
+  { href: "/finance", label: "Финансы", icon: WalletCards },
+  { href: "/health", label: "Здоровье", icon: HeartPulse },
+  { href: "/growth", label: "Развитие", icon: Sprout },
+  { href: "/planner", label: "Планирование", icon: ClipboardList },
+  { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/weekly", label: "Неделя", icon: FileText },
   { href: "/monthly-report", label: "Отчет", icon: Presentation },
   { href: "/history", label: "История", icon: History },
-  { href: "/finance", label: "Финансы", icon: WalletCards },
-  { href: "/health", label: "Здоровье", icon: HeartPulse },
   { href: "/car", label: "Авто", icon: CarFront },
   { href: "/work", label: "Работа", icon: BriefcaseBusiness },
   { href: "/experiments", label: "Эксперименты", icon: FlaskConical },
   { href: "/timeline", label: "Карта жизни", icon: Milestone },
   { href: "/team", label: "Команда", icon: Users },
+  { href: "/team/board", label: "Командная доска", icon: ClipboardList },
   { href: "/notes", label: "Заметки", icon: NotebookText },
   { href: "/checks", label: "Чек-листы", icon: ShieldCheck },
   { href: "/settings", label: "Настройки", icon: Settings }
@@ -62,30 +63,34 @@ const navItems = [
 
 const navGroups = [
   {
-    title: "Основное",
-    items: ["/dashboard", "/daily", "/planner", "/goals", "/growth"]
+    title: "Ежедневно",
+    items: ["/daily", "/dashboard", "/tasks"]
   },
   {
-    title: "Аналитика",
-    items: ["/analytics", "/weekly", "/monthly-report", "/history", "/timeline", "/experiments"]
+    title: "Развитие",
+    items: ["/goals", "/growth", "/analytics", "/history", "/timeline", "/experiments"]
   },
   {
     title: "Практика жизни",
     items: ["/finance", "/health", "/work", "/car"]
   },
   {
-    title: "Организация",
-    items: ["/tasks", "/calendar", "/notes", "/checks"]
+    title: "Планирование",
+    items: ["/planner", "/calendar", "/weekly", "/monthly-report"]
   },
   {
-    title: "Прочее",
-    items: ["/team", "/settings"]
+    title: "Команда",
+    items: ["/team", "/team/board"]
+  },
+  {
+    title: "Система",
+    items: ["/checks", "/notes", "/settings"]
   }
 ];
 
 const navItemByHref = new Map(navItems.map((item) => [item.href, item]));
-const primaryHrefs = new Set(["/daily", "/planner", "/goals", "/analytics"]);
-const mobilePrimaryHrefs = new Set(["/daily", "/planner", "/goals", "/analytics"]);
+const primaryHrefs = new Set(["/daily", "/dashboard", "/tasks", "/goals", "/analytics", "/finance", "/health"]);
+const mobilePrimaryHrefs = new Set(["/daily", "/dashboard", "/tasks", "/goals"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -132,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/dashboard" className="group flex min-w-0 items-center gap-3" aria-label="На дашборд">
             <span className="app-logo-mark transition-transform duration-200 group-hover:-rotate-3">ПФ</span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold tracking-tight sm:text-base">Трекер план/факт</span>
+              <span className="block truncate text-sm font-semibold tracking-tight sm:text-base">Центр развития</span>
               <span className="block truncate text-xs text-muted-foreground">Личный аналитический центр жизни</span>
             </span>
           </Link>
@@ -158,7 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-expanded={moreOpen}
               className={cn("app-nav-link", isDesktopMoreActive && "app-nav-link-active")}
             >
-              Все разделы
+              Еще
             </button>
           </nav>
 
