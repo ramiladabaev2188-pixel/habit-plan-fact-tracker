@@ -36,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
-import { getMonthTitle } from "@/lib/dates/month";
+import { getMonthDates, getMonthTitle, getTodayKey, toDateKey } from "@/lib/dates/month";
 import { calculateTeamStats, type TeamMemberSnapshot } from "@/lib/team-metrics";
 import { loadTeamDashboardData } from "@/lib/supabase/team-data";
 import { formatPercent, formatScore } from "@/lib/utils";
@@ -61,6 +61,34 @@ type TeamActivityFeedItem = {
   unit: string;
   date: string;
   note: string | null;
+};
+
+type MemberRhythm = {
+  currentStreak: number;
+  bestStreak: number;
+  rhythmDays: number;
+  plannedDaysToDate: number;
+  hasComeback: boolean;
+};
+
+type MemberRole = {
+  title: string;
+  detail: string;
+};
+
+type TeamSeasonSnapshot = {
+  label: string;
+  progressPercent: number;
+  elapsedDays: number;
+  totalDays: number;
+  bestWeekday: string | null;
+  weakWeekday: string | null;
+  zeroFactDays: number;
+  completedInitiatives: number;
+  closestChallenge: InitiativeProgress | null;
+  growingMembers: string[];
+  weeklyRisk: string;
+  bestMoment: string;
 };
 
 export default async function TeamPage({
@@ -143,12 +171,35 @@ export default async function TeamPage({
     factScore: member.factScore
   }));
   const closestWin = getClosestTeamWin(goals, challenges);
+  const memberRhythms = new Map(snapshots.map((snapshot) => [snapshot.userId, getMemberRhythm(snapshot, year, month)]));
+  const memberRoles = new Map(
+    stats.memberStats.map((member) => [
+      member.userId,
+      getMemberRole({
+        member,
+        rhythm: memberRhythms.get(member.userId),
+        goalValue: sumByUser(teamGoalContributions, member.userId),
+        challengeValue: sumByUser(teamChallengeCheckins, member.userId)
+      })
+    ])
+  );
+  const season = getTeamSeasonSnapshot({
+    stats,
+    snapshots,
+    year,
+    month,
+    goals,
+    challenges,
+    memberRhythms
+  });
   const teamBadges = getTeamBadges({
     forecastPercent: stats.forecastPercent,
     activeMembers: stats.activeMembers,
     membersWithPlan: stats.membersWithPlan,
     goals,
-    challenges
+    challenges,
+    memberRhythms: [...memberRhythms.values()],
+    season
   });
   const feed = getTeamActivityFeed({
     goals: teamGoals,
@@ -212,6 +263,67 @@ export default async function TeamPage({
           <Metric label="Нужно в день" value={formatScore(stats.requiredPerDay)} />
           <Metric label="Участники с планом" value={`${stats.membersWithPlan} / ${stats.activeMembers}`} />
         </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]" aria-label="Командный сезон">
+        <Card className="section-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-signal" /> Сезон месяца</CardTitle>
+            <CardDescription>{season.label}: общий ритм, завершенные инициативы и ближайшая командная планка.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Пройдено дней</span>
+                <span className="font-medium">{season.elapsedDays} / {season.totalDays}</span>
+              </div>
+              <Progress className="mt-2" value={season.progressPercent * 100} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Metric label="Закрыто инициатив" value={String(season.completedInitiatives)} />
+              <Metric label="Дней без факта" value={String(season.zeroFactDays)} />
+            </div>
+            <div className="rounded-md border border-border/75 bg-card/70 p-3">
+              <div className="text-sm font-medium">Лучший момент</div>
+              <p className="mt-1 text-sm text-muted-foreground">{season.bestMoment}</p>
+            </div>
+            {season.closestChallenge ? (
+              <div className="rounded-md border border-over/35 bg-over/10 p-3">
+                <div className="text-sm font-medium">Ближайший челлендж</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {season.closestChallenge.title}: осталось {formatScore(Math.max(0, season.closestChallenge.target - season.closestChallenge.value))} {season.closestChallenge.unit}.
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="section-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> Командная аналитика</CardTitle>
+            <CardDescription>Сигналы по дням недели, росту темпа и ближайшему риску.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-border/75 bg-card/70 p-3">
+              <div className="text-xs text-muted-foreground">Лучший день недели</div>
+              <div className="mt-1 font-semibold">{season.bestWeekday ?? "Недостаточно данных"}</div>
+            </div>
+            <div className="rounded-md border border-border/75 bg-card/70 p-3">
+              <div className="text-xs text-muted-foreground">Слабый день недели</div>
+              <div className="mt-1 font-semibold">{season.weakWeekday ?? "Недостаточно данных"}</div>
+            </div>
+            <div className="rounded-md border border-border/75 bg-card/70 p-3 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">Кто набирает темп</div>
+              <div className="mt-1 font-semibold">
+                {season.growingMembers.length ? season.growingMembers.join(", ") : "Пока нет устойчивого роста"}
+              </div>
+            </div>
+            <div className="rounded-md border border-warning/35 bg-warning/10 p-3 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">Риск недели</div>
+              <div className="mt-1 font-semibold">{season.weeklyRisk}</div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       {stats.focusMember ? (
@@ -339,7 +451,11 @@ export default async function TeamPage({
             <CardDescription>Личные планы остаются личными: команда видит только разрешённый аналитический срез.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {stats.memberStats.map((member) => (
+            {stats.memberStats.map((member) => {
+              const rhythm = memberRhythms.get(member.userId);
+              const role = memberRoles.get(member.userId) ?? { title: "Собирает ритм", detail: "Данных пока мало, роль уточнится по факту месяца." };
+
+              return (
               <article key={member.userId} className="list-row">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -348,18 +464,29 @@ export default async function TeamPage({
                       {member.month ? member.month.title : "Нет личного месяца на этот период"}
                     </div>
                   </div>
-                  <Badge variant={member.forecastPercent >= 0.8 ? "success" : member.forecastPercent >= 0.6 ? "warning" : "destructive"}>
-                    Прогноз {formatPercent(member.forecastPercent)}
-                  </Badge>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="info">{role.title}</Badge>
+                    <Badge variant={member.forecastPercent >= 0.8 ? "success" : member.forecastPercent >= 0.6 ? "warning" : "destructive"}>
+                      Прогноз {formatPercent(member.forecastPercent)}
+                    </Badge>
+                  </div>
                 </div>
+                <p className="mt-3 text-sm text-muted-foreground">{role.detail}</p>
                 <Progress className="mt-3" value={Math.min(member.forecastPercent, 1.2) * 100} />
                 <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
                   <span>Факт: {formatScore(member.factScore)}</span>
                   <span>План: {formatScore(member.planScore)}</span>
                   <span>Нужно/день: {formatScore(member.requiredPerDay)}</span>
                 </div>
+                <div className="mt-3 grid gap-2 rounded-md border border-border/75 bg-card/60 p-3 text-xs text-muted-foreground sm:grid-cols-4">
+                  <span>Серия: {rhythm?.currentStreak ?? 0} дн.</span>
+                  <span>Лучшая: {rhythm?.bestStreak ?? 0} дн.</span>
+                  <span>В ритме: {rhythm?.rhythmDays ?? 0} / {rhythm?.plannedDaysToDate ?? 0}</span>
+                  <span>{rhythm?.hasComeback ? "Вернулся после пропуска" : "Без камбэка"}</span>
+                </div>
               </article>
-            ))}
+            );
+            })}
           </CardContent>
         </Card>
 
@@ -510,35 +637,287 @@ function getClosestTeamWin(goals: InitiativeProgress[], challenges: InitiativePr
     .sort((a, b) => a.remaining - b.remaining || b.percent - a.percent)[0] ?? null;
 }
 
+function getMemberRhythm(snapshot: TeamMemberSnapshot, year: number, month: number): MemberRhythm {
+  const monthDates = getMonthDates(year, month).map(toDateKey);
+  const todayKey = getTodayKey();
+  const lastVisibleDate = monthDates.includes(todayKey)
+    ? todayKey
+    : todayKey < monthDates[0]
+      ? monthDates[0]
+      : monthDates.at(-1) ?? todayKey;
+  const factsByDate = new Map<string, number>();
+  const plansByDate = new Map<string, number>();
+
+  for (const plan of snapshot.plans) {
+    if (plan.planned_score <= 0) continue;
+    plansByDate.set(plan.date, (plansByDate.get(plan.date) ?? 0) + plan.planned_score);
+  }
+
+  for (const fact of snapshot.facts) {
+    factsByDate.set(fact.date, (factsByDate.get(fact.date) ?? 0) + fact.actual_score);
+  }
+
+  const plannedDays = monthDates
+    .filter((date) => date <= lastVisibleDate)
+    .map((date) => ({
+      date,
+      planScore: plansByDate.get(date) ?? 0,
+      factScore: factsByDate.get(date) ?? 0
+    }))
+    .filter((day) => day.planScore > 0);
+
+  let currentStreak = 0;
+  for (const day of [...plannedDays].reverse()) {
+    if (day.factScore > 0) {
+      currentStreak += 1;
+      continue;
+    }
+    break;
+  }
+
+  let bestStreak = 0;
+  let running = 0;
+  for (const day of plannedDays) {
+    if (day.factScore > 0) {
+      running += 1;
+      bestStreak = Math.max(bestStreak, running);
+    } else {
+      running = 0;
+    }
+  }
+
+  const rhythmDays = plannedDays.filter((day) => day.factScore >= day.planScore * 0.8).length;
+  const lastFactIndex = plannedDays.map((day) => day.factScore > 0).lastIndexOf(true);
+  const hasComeback =
+    lastFactIndex > 0 &&
+    plannedDays[lastFactIndex].factScore > 0 &&
+    plannedDays.slice(0, lastFactIndex).some((day) => day.factScore === 0);
+
+  return {
+    currentStreak,
+    bestStreak,
+    rhythmDays,
+    plannedDaysToDate: plannedDays.length,
+    hasComeback
+  };
+}
+
+function getMemberRole({
+  member,
+  rhythm,
+  goalValue,
+  challengeValue
+}: {
+  member: { forecastPercent: number; factScore: number; planScore: number; riskTasks: unknown[] };
+  rhythm?: MemberRhythm;
+  goalValue: number;
+  challengeValue: number;
+}): MemberRole {
+  if (challengeValue > 0 && challengeValue >= goalValue) {
+    return {
+      title: "Поддержка",
+      detail: "Активно добавляет вклад в общие челленджи и помогает команде держать общий режим."
+    };
+  }
+
+  if (rhythm?.hasComeback) {
+    return {
+      title: "Возвращающийся",
+      detail: "Был пропуск, но участник снова вернулся в факт. Это важный командный сигнал."
+    };
+  }
+
+  if (member.planScore > 0 && member.forecastPercent >= 1.05) {
+    return {
+      title: "Спринтер",
+      detail: "Темп выше плана: участник дает сильный вклад в общий прогноз месяца."
+    };
+  }
+
+  if (member.planScore > 0 && member.riskTasks.length === 0) {
+    return {
+      title: "Фокусник",
+      detail: "Главные задачи не провисают по прогнозу. Можно брать пример с структуры фокуса."
+    };
+  }
+
+  if ((rhythm?.currentStreak ?? 0) >= 3 || (rhythm?.rhythmDays ?? 0) >= 5) {
+    return {
+      title: "Стабилизатор",
+      detail: "Регулярно закрывает факт и поддерживает спокойный командный ритм."
+    };
+  }
+
+  return {
+    title: "Собирает ритм",
+    detail: "Данных пока мало. Роль уточнится, когда накопится несколько плановых дней."
+  };
+}
+
+function getTeamSeasonSnapshot({
+  stats,
+  snapshots,
+  year,
+  month,
+  goals,
+  challenges,
+  memberRhythms
+}: {
+  stats: ReturnType<typeof calculateTeamStats>;
+  snapshots: TeamMemberSnapshot[];
+  year: number;
+  month: number;
+  goals: InitiativeProgress[];
+  challenges: InitiativeProgress[];
+  memberRhythms: Map<string, MemberRhythm>;
+}): TeamSeasonSnapshot {
+  const dates = getMonthDates(year, month).map(toDateKey);
+  const todayKey = getTodayKey();
+  const elapsedDays = todayKey < dates[0]
+    ? 0
+    : todayKey > (dates.at(-1) ?? todayKey)
+      ? dates.length
+      : dates.findIndex((date) => date === todayKey) + 1;
+  const weekdaySignals = getTeamWeekdaySignals(snapshots);
+  const bestWeekday = weekdaySignals.at(-1)?.label ?? null;
+  const weakWeekday = weekdaySignals[0]?.label ?? null;
+  const completedInitiatives = [...goals, ...challenges].filter((item) => item.percent >= 1).length;
+  const closestChallenge =
+    challenges
+      .filter((item) => item.status === "active" && item.target > 0 && item.value < item.target)
+      .sort((a, b) => (a.target - a.value) - (b.target - b.value))[0] ?? null;
+  const growingMembers = stats.memberStats
+    .filter((member) => member.planScore > 0 && member.forecastPercent >= Math.max(member.completion, 0.8))
+    .sort((a, b) => b.forecastPercent - a.forecastPercent)
+    .slice(0, 3)
+    .map((member) => member.name);
+  const zeroFactDays = countTeamZeroFactDays(snapshots);
+  const bestRhythm = [...memberRhythms.entries()].sort((a, b) => b[1].bestStreak - a[1].bestStreak)[0] ?? null;
+  const bestRhythmMember = bestRhythm
+    ? stats.memberStats.find((member) => member.userId === bestRhythm[0])?.name ?? "участника"
+    : null;
+
+  return {
+    label: getMonthTitle(year, month),
+    progressPercent: dates.length ? Math.min(1, elapsedDays / dates.length) : 0,
+    elapsedDays,
+    totalDays: dates.length,
+    bestWeekday,
+    weakWeekday,
+    zeroFactDays,
+    completedInitiatives,
+    closestChallenge,
+    growingMembers,
+    weeklyRisk: stats.focusMember
+      ? `${stats.focusMember.name}: нужно ${formatScore(stats.focusMember.requiredPerDay)} балла в день`
+      : "Нет участника с критичным прогнозом недели",
+    bestMoment: completedInitiatives > 0
+      ? `${completedInitiatives} инициатив уже закрыты`
+      : bestRhythmMember
+        ? `Лучшая серия у ${bestRhythmMember}: ${bestRhythm?.[1].bestStreak ?? 0} дней`
+        : "Лучший момент появится после первых вкладов"
+  };
+}
+
+function getTeamWeekdaySignals(snapshots: TeamMemberSnapshot[]) {
+  const labels = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+  const stats = new Map<number, { plan: number; fact: number }>();
+  const todayKey = getTodayKey();
+
+  for (const snapshot of snapshots) {
+    const factsByDate = new Map<string, number>();
+    for (const fact of snapshot.facts) {
+      factsByDate.set(fact.date, (factsByDate.get(fact.date) ?? 0) + fact.actual_score);
+    }
+
+    for (const plan of snapshot.plans) {
+      if (plan.planned_score <= 0 || plan.date > todayKey) continue;
+      const dayIndex = new Date(`${plan.date}T00:00:00Z`).getUTCDay();
+      const item = stats.get(dayIndex) ?? { plan: 0, fact: 0 };
+      item.plan += plan.planned_score;
+      item.fact += factsByDate.get(plan.date) ?? 0;
+      stats.set(dayIndex, item);
+    }
+  }
+
+  return [...stats.entries()]
+    .filter(([, value]) => value.plan > 0)
+    .map(([dayIndex, value]) => ({
+      label: labels[dayIndex],
+      completion: value.fact / value.plan
+    }))
+    .sort((a, b) => a.completion - b.completion);
+}
+
+function countTeamZeroFactDays(snapshots: TeamMemberSnapshot[]) {
+  const byDate = new Map<string, { plan: number; fact: number }>();
+  const todayKey = getTodayKey();
+
+  for (const snapshot of snapshots) {
+    for (const plan of snapshot.plans) {
+      if (plan.planned_score <= 0 || plan.date > todayKey) continue;
+      const item = byDate.get(plan.date) ?? { plan: 0, fact: 0 };
+      item.plan += plan.planned_score;
+      byDate.set(plan.date, item);
+    }
+    for (const fact of snapshot.facts) {
+      const item = byDate.get(fact.date);
+      if (!item) continue;
+      item.fact += fact.actual_score;
+    }
+  }
+
+  return [...byDate.values()].filter((item) => item.plan > 0 && item.fact === 0).length;
+}
+
 function getTeamBadges({
   forecastPercent,
   activeMembers,
   membersWithPlan,
   goals,
-  challenges
+  challenges,
+  memberRhythms,
+  season
 }: {
   forecastPercent: number;
   activeMembers: number;
   membersWithPlan: number;
   goals: InitiativeProgress[];
   challenges: InitiativeProgress[];
+  memberRhythms: MemberRhythm[];
+  season: TeamSeasonSnapshot;
 }) {
-  const badges = [
-    forecastPercent >= 0.8
-      ? { title: "Ритм держится", detail: "Командный прогноз выше целевого правила 80%." }
-      : { title: "Нужен общий слот", detail: "Командный прогноз ниже 80%, лучше выбрать один общий фокус." },
-    activeMembers > 0 && membersWithPlan === activeMembers
-      ? { title: "Все в системе", detail: "У каждого участника есть личный месяц на выбранный период." }
-      : { title: "Не все подключены", detail: "Часть участников пока без плана на этот месяц." }
-  ];
   const completed = [...goals, ...challenges].filter((item) => item.percent >= 1).length;
-  badges.push(
-    completed
-      ? { title: "Есть победы", detail: `${completed} общих инициатив уже закрыты.` }
-      : { title: "Первая победа впереди", detail: "Выберите короткий челлендж, чтобы быстро получить общий результат." }
-  );
+  const hasContribution = [...goals, ...challenges].some((item) => item.value > 0);
+  const maxStreak = Math.max(0, ...memberRhythms.map((rhythm) => rhythm.currentStreak));
+  const hasComeback = memberRhythms.some((rhythm) => rhythm.hasComeback);
 
-  return badges;
+  return [
+    forecastPercent >= 1
+      ? { title: "Командный рывок", detail: "Общий прогноз выше 100%: сезон идет быстрее плана." }
+      : { title: "Командный рывок", detail: "В пути: для рывка нужен прогноз выше 100%." },
+    maxStreak >= 7
+      ? { title: "Стабильная неделя", detail: `Есть серия ${maxStreak} дней с фактом.` }
+      : { title: "Стабильная неделя", detail: "В пути: нужна серия 7 дней с фактом." },
+    completed
+      ? { title: "Финишировали вместе", detail: `${completed} общих инициатив уже закрыты.` }
+      : { title: "Финишировали вместе", detail: "В пути: закройте первую общую инициативу." },
+    season.zeroFactDays === 0 && statsReady(activeMembers, membersWithPlan)
+      ? { title: "Без нулевых дней", detail: "В выбранном периоде нет командных дней с нулевым фактом." }
+      : { title: "Без нулевых дней", detail: `Нулевых дней: ${season.zeroFactDays}.` },
+    hasComeback
+      ? { title: "Возвращение в ритм", detail: "Кто-то восстановил факт после пропуска." }
+      : { title: "Возвращение в ритм", detail: "Появится, когда участник вернется после пропуска." },
+    hasContribution
+      ? { title: "Первый вклад", detail: "В командные инициативы уже добавлен вклад." }
+      : { title: "Первый вклад", detail: "Добавьте первый вклад в цель или челлендж." },
+    challenges.length
+      ? { title: "Первый челлендж", detail: "Команда уже запустила челлендж." }
+      : { title: "Первый челлендж", detail: "Создайте короткий челлендж на неделю." },
+    activeMembers > 0 && membersWithPlan === activeMembers
+      ? { title: "Все подключились", detail: "У каждого участника есть личный месяц на этот период." }
+      : { title: "Все подключились", detail: "Часть участников пока без плана на этот месяц." }
+  ];
 }
 
 function getTeamActivityFeed({
@@ -589,6 +968,7 @@ function getTeamActivityFeed({
 }
 
 function sumByUser(items: { user_id: string; value: number }[], userId: string) { return items.filter((item) => item.user_id === userId).reduce((sum, item) => sum + item.value, 0); }
+function statsReady(activeMembers: number, membersWithPlan: number) { return activeMembers > 0 && membersWithPlan > 0; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`)); }
 function pluralizeMembers(value: number) { const remainder = value % 100; if (remainder >= 11 && remainder <= 14) return "участников"; const last = value % 10; return last === 1 ? "участник" : last >= 2 && last <= 4 ? "участника" : "участников"; }
 async function getOrigin() { const headersList = await headers(); const host = headersList.get("host") ?? "localhost:3000"; const protocol = host.includes("localhost") ? "http" : "https"; return `${protocol}://${host}`; }

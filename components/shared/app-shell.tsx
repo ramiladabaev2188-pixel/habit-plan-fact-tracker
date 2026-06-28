@@ -89,7 +89,7 @@ const navGroups = [
 ];
 
 const navItemByHref = new Map(navItems.map((item) => [item.href, item]));
-const primaryHrefs = new Set(["/daily", "/dashboard", "/tasks", "/goals", "/analytics", "/finance", "/health"]);
+const primaryHrefs = new Set(["/daily", "/dashboard", "/tasks", "/goals", "/analytics"]);
 const mobilePrimaryHrefs = new Set(["/daily", "/dashboard", "/tasks", "/goals"]);
 
 export function AppShell({ children }: { children: ReactNode }) {

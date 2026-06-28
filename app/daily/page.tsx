@@ -231,8 +231,20 @@ export default async function DailyPage({
 
       {items.length ? (
         <>
-          <section className="grid gap-3 lg:grid-cols-3" aria-label="Сегодняшний вклад">
-            <div className="signal-panel lg:col-span-2">
+          <details className="section-panel overflow-hidden" aria-label="Сегодняшний вклад">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 transition-colors hover:bg-fog sm:p-5">
+              <div>
+                <div className="font-semibold">Сегодняшний вклад</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {dayContribution.areas.length
+                    ? `${dayContribution.areas.length} сфер · ${dayContribution.goals.length} целей получили сигнал`
+                    : "Компактная сводка перед быстрым вводом"}
+                </p>
+              </div>
+              <span className="shrink-0 text-sm text-muted-foreground">Открыть</span>
+            </summary>
+            <div className="grid gap-3 border-t border-border p-4 lg:grid-cols-3">
+              <div className="rounded-md border border-border/75 bg-card/70 p-4 lg:col-span-2">
               <div className="font-semibold">Сегодняшний вклад</div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Факт дня уже двигает не только месячный процент, но и сферы жизни с целями.
@@ -277,7 +289,7 @@ export default async function DailyPage({
                 </div>
               ) : null}
             </div>
-            <div className="signal-panel">
+              <div className="rounded-md border border-border/75 bg-card/70 p-4">
               <div className="font-semibold">Цели и слабое место</div>
               {dayContribution.goals.length ? (
                 <div className="mt-3 space-y-2">
@@ -296,8 +308,9 @@ export default async function DailyPage({
                   Слабое место дня: <span className="font-medium text-foreground">{dayContribution.weakArea.name}</span>.
                 </p>
               ) : null}
+              </div>
             </div>
-          </section>
+          </details>
 
           <div id="daily-input" />
           <DailyInput

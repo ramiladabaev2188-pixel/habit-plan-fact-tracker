@@ -94,6 +94,80 @@ test.describe("product smoke", () => {
     await expect(dialog).toBeHidden();
   });
 
+  test("desktop navigation keeps laptop header compact", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Desktop navigation test runs only in the desktop project.");
+    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated navigation tests.");
+
+    await signIn(page);
+
+    for (const width of [1280, 1366, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/dashboard");
+
+      const primaryNav = page.getByRole("navigation", { name: "Основная навигация" });
+      await expect(primaryNav.getByRole("link", { name: "Сегодня" })).toBeVisible();
+      await expect(primaryNav.getByRole("link", { name: "Дашборд" })).toBeVisible();
+      await expect(primaryNav.getByRole("link", { name: "Задачи" })).toBeVisible();
+      await expect(primaryNav.getByRole("link", { name: "Цели" })).toBeVisible();
+      await expect(primaryNav.getByRole("link", { name: "Аналитика" })).toBeVisible();
+      await expect(primaryNav.getByRole("link", { name: "Финансы" })).toHaveCount(0);
+      await expect(primaryNav.getByRole("link", { name: "Здоровье" })).toHaveCount(0);
+
+      await primaryNav.getByRole("button", { name: "Еще" }).click();
+      const dialog = page.getByRole("dialog", { name: /Все разделы/i });
+      await expect(dialog.getByRole("link", { name: "Финансы" })).toBeVisible();
+      await expect(dialog.getByRole("link", { name: "Здоровье" })).toBeVisible();
+      await page.keyboard.press("Escape");
+    }
+  });
+
+  test("all sections menu scrolls to lower system links", async ({ page }) => {
+    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated navigation tests.");
+
+    await signIn(page);
+    await page.goto("/dashboard");
+    await openAllSections(page);
+
+    const dialog = page.getByRole("dialog", { name: /Все разделы/i });
+    const settingsLink = dialog.getByRole("link", { name: "Настройки" });
+    await settingsLink.scrollIntoViewIfNeeded();
+    await expect(settingsLink).toBeVisible();
+    await expect(dialog.getByRole("link", { name: "Чек-листы" })).toBeVisible();
+    await expectNoConsoleErrors(page);
+  });
+
+  test("daily measured task display keeps fact versus plan percent readable", async ({ page }) => {
+    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated daily tests.");
+
+    await signIn(page);
+    await page.goto("/daily");
+
+    const measuredBadge = page.getByText("Измеримая").first();
+    if ((await measuredBadge.count()) === 0) {
+      test.skip(true, "Тестовый аккаунт не содержит измеримую задачу.");
+    }
+
+    const taskCard = measuredBadge.locator("xpath=ancestor::article").first();
+    await expect(taskCard).toContainText(/факт \/ план|%/i);
+    await expect(taskCard).toContainText(/План/i);
+    await expectNoConsoleErrors(page);
+  });
+
+  test("checks and team pages expose product-specific states", async ({ page }) => {
+    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated route tests.");
+
+    await signIn(page);
+
+    await page.goto("/checks");
+    await expect(page.locator("body")).toContainText(/Проверки|чисто|внимание|критично/i);
+    await expect(page.locator("body")).not.toContainText(/NaN|Infinity|undefined|null/i);
+
+    await page.goto("/team");
+    await expect(page.locator("body")).toContainText(/Команда|Командный контур|Сезон месяца|Новая команда/i);
+    await expect(page.locator("body")).not.toContainText(/NaN|Infinity|undefined|null/i);
+    await expectNoConsoleErrors(page);
+  });
+
   test("goal to daily to dashboard lifecycle smoke", async ({ page }) => {
     test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run authenticated lifecycle tests.");
 

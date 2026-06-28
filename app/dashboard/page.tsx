@@ -484,30 +484,39 @@ export default async function DashboardPage({
         </Card>
       </section>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <section className="dashboard-chart-panel">
-          <div className="dashboard-panel-header">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">План и факт по дням</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Ритм выполнения без накопления.</p>
+      <details className="section-panel overflow-hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 transition-colors hover:bg-fog">
+          <div>
+            <h2 className="text-lg font-semibold tracking-normal">Графики и динамика</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Подробный ритм по дням открыт по запросу, чтобы дашборд не перегружал первый экран.</p>
+          </div>
+          <span className="text-sm text-muted-foreground">Подробнее</span>
+        </summary>
+        <div className="grid gap-3 border-t border-border p-4 xl:grid-cols-2">
+          <section className="dashboard-chart-panel shadow-none">
+            <div className="dashboard-panel-header">
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight">План и факт по дням</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Ритм выполнения без накопления.</p>
+              </div>
             </div>
-          </div>
-          <div className="p-5">
-            <DashboardPlanFactChart data={chartData} />
-          </div>
-        </section>
-        <section className="dashboard-chart-panel">
-          <div className="dashboard-panel-header">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">Накопительный темп</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Разрыв между планом и фактом за месяц.</p>
+            <div className="p-5">
+              <DashboardPlanFactChart data={chartData} />
             </div>
-          </div>
-          <div className="p-5">
-            <DashboardCumulativePlanFactChart data={chartData} />
-          </div>
-        </section>
-      </div>
+          </section>
+          <section className="dashboard-chart-panel shadow-none">
+            <div className="dashboard-panel-header">
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight">Накопительный темп</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Разрыв между планом и фактом за месяц.</p>
+              </div>
+            </div>
+            <div className="p-5">
+              <DashboardCumulativePlanFactChart data={chartData} />
+            </div>
+          </section>
+        </div>
+      </details>
 
       <Card className="section-panel">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
