@@ -1,0 +1,109 @@
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "tests/**"
+      - "playwright-report/**"
+      - "test-results/**"
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy standalone app
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_VPS_DEPLOY == '1' }}
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      SKIP_NEXT_BUILD_VALIDATION: "1"
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.0.7 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack standalone output
+        run: |
+          mkdir -p release/.next
+          cp -R .next/standalone/. release/
+          cp -R .next/static release/.next/static
+          cp -R public release/public
+          tar -czf release.tar.gz -C release .
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "mkdir -p /opt/habit-plan-fact-tracker"
+          scp -i ~/.ssh/deploy_key release.tar.gz "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/habit-plan-fact-tracker/release.tar.gz"
+
+      - name: Activate release
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
+          set -e
+          APP_DIR=/opt/habit-plan-fact-tracker
+          mkdir -p "$APP_DIR/current"
+          rm -rf "$APP_DIR/current"/*
+          tar -xzf "$APP_DIR/release.tar.gz" -C "$APP_DIR/current"
+          cat > "$APP_DIR/.env" << ENVEOF
+          NODE_ENV=production
+          PORT=3000
+          HOSTNAME=0.0.0.0
+          NEXT_TELEMETRY_DISABLED=1
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          ENVEOF
+          cat > /etc/systemd/system/habit-plan-fact-tracker.service << SERVICEEOF
+          [Unit]
+          Description=Habit Plan Fact Tracker
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=$APP_DIR/current
+          EnvironmentFile=$APP_DIR/.env
+          ExecStart=/usr/bin/node server.js
+          Restart=always
+          RestartSec=5
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICEEOF
+          systemctl daemon-reload
+          systemctl enable habit-plan-fact-tracker
+          systemctl restart habit-plan-fact-tracker
+          systemctl --no-pager --full status habit-plan-fact-tracker
+          EOF
