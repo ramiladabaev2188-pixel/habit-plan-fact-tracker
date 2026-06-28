@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: habit-plan-fact-tracker
+    env: docker
+    plan: free
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
+      - key: SKIP_NEXT_BUILD_VALIDATION
+        value: "1"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

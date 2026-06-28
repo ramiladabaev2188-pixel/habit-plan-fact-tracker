@@ -1,11 +1,26 @@
 /** @type {import('next').NextConfig} */
 const isProduction = process.env.NODE_ENV === "production";
 const skipBuildValidation = process.env.SKIP_NEXT_BUILD_VALIDATION === "1";
+const configuredSiteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.APP_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  "";
+const configuredSiteHost = (() => {
+  try {
+    return configuredSiteUrl ? new URL(configuredSiteUrl).host : "";
+  } catch {
+    return "";
+  }
+})();
 const serverActionAllowedOrigins = [
+  "*.onrender.com",
+  "*.apps.vibehost.ru",
   "tracker-ramil.apps.vibehost.ru",
+  configuredSiteHost,
   "localhost:3000",
   "127.0.0.1:3000"
-];
+].filter(Boolean);
 
 const contentSecurityPolicy = [
   "default-src 'self'",
