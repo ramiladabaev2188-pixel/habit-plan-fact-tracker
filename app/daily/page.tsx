@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { closeMonthAction } from "@/app/actions";
+import { closeDayAction, closeMonthAction } from "@/app/actions";
 import { DailyInput } from "@/components/daily/daily-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -311,6 +311,28 @@ export default async function DailyPage({
               </div>
             </div>
           </details>
+
+          <section className="signal-panel grid gap-4 lg:grid-cols-[1fr_auto]" aria-label="Закрытие дня">
+            <div>
+              <div className="page-kicker">Итог дня</div>
+              <h2 className="mt-1 text-xl font-semibold tracking-normal">Закрыть день в журнал</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Сводка сохранит план, факт, пропуски, главную причину срыва и короткий вывод. Это помогает смотреть историю не только в процентах.
+              </p>
+            </div>
+            <form action={closeDayAction} className="grid gap-2 sm:min-w-72">
+              <input type="hidden" name="monthId" value={selectedMonth.id} />
+              <input type="hidden" name="date" value={selectedDate} />
+              <Label htmlFor="day-close-note">Короткий вывод</Label>
+              <Input
+                id="day-close-note"
+                name="note"
+                defaultValue={dayNote?.content ?? ""}
+                placeholder="Что важно запомнить по дню"
+              />
+              <Button type="submit">Закрыть день</Button>
+            </form>
+          </section>
 
           <div id="daily-input" />
           <DailyInput

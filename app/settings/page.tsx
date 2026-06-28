@@ -6,6 +6,7 @@ import {
   createCategoryAction,
   deleteCategoryAction,
   updateCategoryAction,
+  updateNotificationSettingsAction,
   updateSettingsAction
 } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import { ReminderSettings } from "@/components/settings/reminder-settings";
 import { ConfirmSubmitButton } from "@/components/shared/confirm-submit-button";
 import { EmptyMonthState, ErrorState } from "@/components/shared/page-state";
 import { SetupNotice } from "@/components/shared/setup-notice";
-import { loadTrackerData } from "@/lib/supabase/data";
+import { loadNotificationCenter, loadTrackerData } from "@/lib/supabase/data";
 
 export default async function SettingsPage({
   searchParams
@@ -27,6 +28,7 @@ export default async function SettingsPage({
 }) {
   const params = await searchParams;
   const result = await loadTrackerData(params.month);
+  const notificationCenter = result.configured && result.user ? await loadNotificationCenter() : null;
 
   if (!result.configured) {
     return <SetupNotice />;
@@ -137,6 +139,85 @@ export default async function SettingsPage({
       </Card>
 
       <ReminderSettings preferences={preferences} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Центр уведомлений</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={updateNotificationSettingsAction} className="grid gap-4 lg:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="enabled" className="mt-1" defaultChecked={notificationCenter?.settings?.enabled ?? true} />
+              <span>
+                <span className="block font-medium">Включить in-app уведомления</span>
+                <span className="text-muted-foreground">Показывать счетчик и подсказки в верхней панели приложения.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="quietMode" className="mt-1" defaultChecked={notificationCenter?.settings?.quiet_mode ?? false} />
+              <span>
+                <span className="block font-medium">Тихий режим</span>
+                <span className="text-muted-foreground">Не создавать новые уведомления, пока режим включен.</span>
+              </span>
+            </label>
+            <div className="space-y-2">
+              <Label htmlFor="eveningReminderTime">Вечернее время факта</Label>
+              <Input
+                id="eveningReminderTime"
+                name="eveningReminderTime"
+                type="time"
+                defaultValue={notificationCenter?.settings?.evening_reminder_time ?? "21:00"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Дни недели</Label>
+              <div className="grid grid-cols-4 gap-2 text-sm sm:grid-cols-7">
+                {[
+                  ["1", "Пн"],
+                  ["2", "Вт"],
+                  ["3", "Ср"],
+                  ["4", "Чт"],
+                  ["5", "Пт"],
+                  ["6", "Сб"],
+                  ["0", "Вс"]
+                ].map(([value, label]) => (
+                  <label key={value} className="flex items-center justify-center gap-1 rounded-md border px-2 py-2">
+                    <input
+                      type="checkbox"
+                      name="reminderWeekdays"
+                      value={value}
+                      defaultChecked={(notificationCenter?.settings?.reminder_weekdays ?? [1, 2, 3, 4, 5, 6, 0]).includes(Number(value))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="remindDeadline1d" className="mt-1" defaultChecked={notificationCenter?.settings?.remind_deadline_1d ?? true} />
+              <span>Напоминать за 1 день до срока</span>
+            </label>
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="remindDeadline3d" className="mt-1" defaultChecked={notificationCenter?.settings?.remind_deadline_3d ?? true} />
+              <span>Напоминать за 3 дня до срока</span>
+            </label>
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="remindOverdue" className="mt-1" defaultChecked={notificationCenter?.settings?.remind_overdue ?? true} />
+              <span>Показывать просроченные цели и риски</span>
+            </label>
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" name="remindWeeklyReview" className="mt-1" defaultChecked={notificationCenter?.settings?.remind_weekly_review ?? true} />
+              <span>Напоминать о недельном разборе</span>
+            </label>
+            <div className="lg:col-span-2">
+              <Button type="submit">Сохранить правила уведомлений</Button>
+              {notificationCenter?.error ? (
+                <p className="mt-2 text-sm text-warning">Настройки уведомлений загрузились с предупреждением: {notificationCenter.error}</p>
+              ) : null}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       <ImportJson />
 

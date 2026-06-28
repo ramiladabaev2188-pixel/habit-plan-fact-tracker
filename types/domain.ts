@@ -488,6 +488,21 @@ export type TeamChallengeCheckin = {
 
 export type TeamBoardPriority = "low" | "medium" | "high" | "urgent";
 export type PersonalBoardPriority = "low" | "medium" | "high" | "urgent";
+export type NotificationStatus = "unread" | "read" | "dismissed";
+export type NotificationType =
+  | "due_today"
+  | "due_tomorrow"
+  | "due_3_days"
+  | "overdue"
+  | "today_fact_missing"
+  | "yesterday_not_closed"
+  | "stale_goal_progress"
+  | "weak_life_area"
+  | "weekly_review_due"
+  | "monthly_plan_update_due"
+  | "team_challenge_ending"
+  | "system";
+export type ActivityVisibility = "private" | "team";
 
 export type TeamBoard = {
   id: string;
@@ -580,6 +595,84 @@ export type PersonalBoardComment = {
   content: string;
   created_at: string;
   updated_at: string;
+};
+
+export type NotificationSetting = {
+  id: string;
+  user_id: string;
+  enabled: boolean;
+  evening_reminder_time: string;
+  remind_deadline_1d: boolean;
+  remind_deadline_3d: boolean;
+  remind_overdue: boolean;
+  remind_weekly_review: boolean;
+  quiet_mode: boolean;
+  reminder_weekdays: number[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type AppNotification = {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  action_url: string | null;
+  status: NotificationStatus;
+  scheduled_for: string | null;
+  dedupe_key: string;
+  created_at: string;
+  read_at: string | null;
+  dismissed_at: string | null;
+};
+
+export type ActivityEvent = {
+  id: string;
+  user_id: string;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  title: string;
+  description: string | null;
+  occurred_at: string;
+  metadata: Record<string, unknown>;
+  visibility: ActivityVisibility;
+};
+
+export type DaySummary = {
+  id: string;
+  user_id: string;
+  month_id: string;
+  date: string;
+  planned_count: number;
+  done_count: number;
+  partial_count: number;
+  overdone_count: number;
+  missed_count: number;
+  missing_fact_count: number;
+  plan_score: number;
+  fact_score: number;
+  completion: number;
+  main_miss_reason: MissReason | string | null;
+  note: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FocusSession = {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  note: string | null;
+  outcome: string | null;
+  created_at: string;
 };
 
 export type TrackerData = {

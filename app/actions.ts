@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getMonthTitle, getTodayKey } from "@/lib/dates/month";
+import { buildDayClosedEventTitle, calculateDaySummaryDraft, getFocusSessionDurationMinutes } from "@/lib/activity";
 import { calculateScore } from "@/lib/metrics";
+import { generateDueNotifications, type NotificationCandidate } from "@/lib/notifications";
 import {
   copyMonthTemplate,
   generatePlanFromRule,
@@ -36,6 +38,8 @@ import {
   missReasonSchema,
   monthSchema,
   noteSchema,
+  notificationActionSchema,
+  notificationSettingsSchema,
   onboardingSchema,
   passwordChangeSchema,
   planGenerationSchema,
@@ -60,6 +64,8 @@ import {
   teamBoardTaskMoveSchema,
   teamBoardTaskSchema,
   weeklyReviewSchema,
+  daySummarySchema,
+  focusSessionSchema,
   workCaseSchema,
   workProjectSchema,
   workSkillSchema
@@ -72,6 +78,7 @@ import {
   personalBoardTaskSchema,
   personalBoardTaskUpdateSchema
 } from "@/lib/validators/personal-board";
+import type { Json } from "@/types/database";
 import type { LifeEvent, PlanningRuleMode } from "@/types/domain";
 
 type DailyEntryInput = {
@@ -1044,8 +1051,356 @@ export async function saveDailyFactsAction(input: SaveDailyFactsInput): Promise<
     }
   }
 
+  await logActivityEvent(supabase, userId, {
+    entityType: "daily_fact",
+    action: "fact_filled",
+    title: `Факт дня сохранен: ${parsedDate.data}`,
+    description: rows.length ? `Заполнено ${rows.length} значений факта.` : "Факт дня очищен или обновлен.",
+    metadata: {
+      monthId: input.monthId,
+      date: parsedDate.data,
+      savedCount: rows.length,
+      clearedCount: clearedTaskIds.length
+    }
+  });
+
   revalidateTracker();
   return { ok: true };
+}
+
+export async function createNotificationAction(input: NotificationCandidate) {
+  const { supabase, userId } = await requireUser();
+  await upsertNotifications(supabase, userId, [input]);
+  revalidatePath("/dashboard");
+}
+
+export async function markNotificationReadAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = notificationActionSchema.parse({
+    notificationId: formData.get("notificationId")
+  });
+
+  const { error } = await supabase
+    .from("notifications")
+    .update({
+      status: "read",
+      read_at: new Date().toISOString()
+    })
+    .eq("id", parsed.notificationId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard");
+}
+
+export async function dismissNotificationAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = notificationActionSchema.parse({
+    notificationId: formData.get("notificationId")
+  });
+
+  const { error } = await supabase
+    .from("notifications")
+    .update({
+      status: "dismissed",
+      dismissed_at: new Date().toISOString()
+    })
+    .eq("id", parsed.notificationId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard");
+}
+
+export async function updateNotificationSettingsAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = notificationSettingsSchema.parse({
+    enabled: formData.has("enabled"),
+    eveningReminderTime: formData.get("eveningReminderTime"),
+    remindDeadline1d: formData.has("remindDeadline1d"),
+    remindDeadline3d: formData.has("remindDeadline3d"),
+    remindOverdue: formData.has("remindOverdue"),
+    remindWeeklyReview: formData.has("remindWeeklyReview"),
+    quietMode: formData.has("quietMode"),
+    reminderWeekdays: formData.getAll("reminderWeekdays")
+  });
+
+  const { error } = await supabase.from("notification_settings").upsert(
+    {
+      user_id: userId,
+      enabled: parsed.enabled,
+      evening_reminder_time: parsed.eveningReminderTime,
+      remind_deadline_1d: parsed.remindDeadline1d,
+      remind_deadline_3d: parsed.remindDeadline3d,
+      remind_overdue: parsed.remindOverdue,
+      remind_weekly_review: parsed.remindWeeklyReview,
+      quiet_mode: parsed.quietMode,
+      reminder_weekdays: parsed.reminderWeekdays
+    },
+    { onConflict: "user_id" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function generateDueNotificationsAction() {
+  const { supabase, userId } = await requireUser();
+  const today = getTodayKey();
+  const currentDate = new Date(`${today}T00:00:00`);
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+
+  await supabase.from("notification_settings").upsert({ user_id: userId }, { onConflict: "user_id" });
+
+  const [
+    settingsResult,
+    monthResult,
+    tasksResult,
+    categoriesResult,
+    lifeAreasResult,
+    goalsResult
+  ] = await Promise.all([
+    supabase.from("notification_settings").select("*").eq("user_id", userId).maybeSingle(),
+    supabase
+      .from("months")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("year", currentYear)
+      .eq("month", currentMonth)
+      .maybeSingle(),
+    supabase.from("tasks").select("*").eq("user_id", userId),
+    supabase.from("categories").select("*").eq("user_id", userId),
+    supabase.from("life_areas").select("*").eq("user_id", userId).eq("is_active", true),
+    supabase.from("goals").select("*").eq("user_id", userId).neq("status", "archived")
+  ]);
+
+  const baseError =
+    settingsResult.error?.message ??
+    monthResult.error?.message ??
+    tasksResult.error?.message ??
+    categoriesResult.error?.message ??
+    lifeAreasResult.error?.message ??
+    goalsResult.error?.message ??
+    null;
+
+  if (baseError) {
+    throw new Error(baseError);
+  }
+
+  const monthId = monthResult.data?.id ?? null;
+  const goalIds = (goalsResult.data ?? []).map((goal) => goal.id);
+  const [plansResult, factsResult, goalTasksResult, weeklyReviewsResult] = await Promise.all([
+    monthId
+      ? supabase.from("daily_plans").select("*").eq("month_id", monthId)
+      : Promise.resolve({ data: [], error: null }),
+    monthId
+      ? supabase.from("daily_facts").select("*").eq("month_id", monthId)
+      : Promise.resolve({ data: [], error: null }),
+    goalIds.length
+      ? supabase.from("goal_tasks").select("*").in("goal_id", goalIds)
+      : Promise.resolve({ data: [], error: null }),
+    monthId
+      ? supabase.from("weekly_reviews").select("*").eq("user_id", userId).eq("month_id", monthId)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  const dataError =
+    plansResult.error?.message ??
+    factsResult.error?.message ??
+    goalTasksResult.error?.message ??
+    weeklyReviewsResult.error?.message ??
+    null;
+
+  if (dataError) {
+    throw new Error(dataError);
+  }
+
+  const candidates = generateDueNotifications({
+    today,
+    selectedMonthId: monthId,
+    plans: (plansResult.data ?? []).map((plan) => ({
+      ...plan,
+      planned_value: Number(plan.planned_value),
+      planned_score: Number(plan.planned_score)
+    })),
+    facts: (factsResult.data ?? []).map((fact) => ({
+      ...fact,
+      actual_value: Number(fact.actual_value),
+      actual_score: Number(fact.actual_score)
+    })),
+    tasks: (tasksResult.data ?? []).map((task) => ({ ...task, weight: Number(task.weight) })),
+    categories: categoriesResult.data ?? [],
+    lifeAreas: lifeAreasResult.data ?? [],
+    goals: (goalsResult.data ?? []).map((goal) => ({
+      ...goal,
+      target_value: goal.target_value === null ? null : Number(goal.target_value),
+      current_value: goal.current_value === null ? null : Number(goal.current_value)
+    })),
+    goalTasks: goalTasksResult.data ?? [],
+    weeklyReviews: weeklyReviewsResult.data ?? [],
+    settings: settingsResult.data
+      ? {
+          ...settingsResult.data,
+          reminder_weekdays: settingsResult.data.reminder_weekdays ?? [1, 2, 3, 4, 5, 6, 0]
+        }
+      : null
+  });
+
+  await upsertNotifications(supabase, userId, candidates);
+  revalidatePath("/dashboard");
+  revalidatePath("/activity");
+}
+
+export async function closeDayAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = daySummarySchema.parse({
+    monthId: formData.get("monthId"),
+    date: formData.get("date"),
+    note: formData.get("note")
+  });
+
+  const { data: month, error: monthError } = await supabase
+    .from("months")
+    .select("id, user_id")
+    .eq("id", parsed.monthId)
+    .eq("user_id", userId)
+    .single();
+
+  if (monthError || !month) {
+    throw new Error(monthError?.message ?? "Месяц не найден");
+  }
+
+  const [plansResult, factsResult, tasksResult] = await Promise.all([
+    supabase.from("daily_plans").select("*").eq("month_id", parsed.monthId).eq("date", parsed.date),
+    supabase.from("daily_facts").select("*").eq("month_id", parsed.monthId).eq("date", parsed.date),
+    supabase.from("tasks").select("*").eq("user_id", userId)
+  ]);
+
+  const error = plansResult.error?.message ?? factsResult.error?.message ?? tasksResult.error?.message ?? null;
+  if (error) {
+    throw new Error(error);
+  }
+
+  const summary = calculateDaySummaryDraft({
+    userId,
+    monthId: parsed.monthId,
+    date: parsed.date,
+    plans: (plansResult.data ?? []).map((plan) => ({
+      ...plan,
+      planned_value: Number(plan.planned_value),
+      planned_score: Number(plan.planned_score)
+    })),
+    facts: (factsResult.data ?? []).map((fact) => ({
+      ...fact,
+      actual_value: Number(fact.actual_value),
+      actual_score: Number(fact.actual_score)
+    })),
+    tasks: (tasksResult.data ?? []).map((task) => ({ ...task, weight: Number(task.weight) })),
+    note: parsed.note
+  });
+
+  const { error: upsertError } = await supabase.from("day_summaries").upsert(
+    {
+      ...summary,
+      metadata: summary.metadata as Json
+    },
+    { onConflict: "user_id,date" }
+  );
+  if (upsertError) {
+    throw new Error(upsertError.message);
+  }
+
+  await logActivityEvent(supabase, userId, {
+    entityType: "day_summary",
+    action: "day_closed",
+    title: buildDayClosedEventTitle(summary),
+    description: `План: ${summary.planned_count}, выполнено: ${summary.done_count + summary.overdone_count}, частично: ${summary.partial_count}, пропущено: ${summary.missed_count}.`,
+    metadata: {
+      monthId: parsed.monthId,
+      date: parsed.date,
+      completion: summary.completion,
+      missingFactCount: summary.missing_fact_count
+    }
+  });
+
+  revalidatePath("/daily");
+  revalidatePath("/activity");
+}
+
+export async function createFocusSessionAction(formData: FormData) {
+  const { supabase, userId } = await requireUser();
+  const parsed = focusSessionSchema.parse({
+    taskId: formData.get("taskId"),
+    startedAt: formData.get("startedAt"),
+    endedAt: formData.get("endedAt"),
+    durationMinutes: formData.get("durationMinutes"),
+    note: formData.get("note"),
+    outcome: formData.get("outcome")
+  });
+
+  const taskId = parsed.taskId || null;
+
+  if (taskId) {
+    const { data: task, error: taskError } = await supabase
+      .from("tasks")
+      .select("id")
+      .eq("id", taskId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (taskError || !task) {
+      throw new Error(taskError?.message ?? "Задача не найдена");
+    }
+  }
+
+  const duration = getFocusSessionDurationMinutes(
+    parsed.startedAt,
+    parsed.endedAt || null,
+    parsed.durationMinutes === "" ? null : parsed.durationMinutes ?? null
+  );
+
+  const { data: session, error } = await supabase
+    .from("focus_sessions")
+    .insert({
+      user_id: userId,
+      task_id: taskId,
+      started_at: parsed.startedAt,
+      ended_at: parsed.endedAt || null,
+      duration_minutes: duration,
+      note: parsed.note || null,
+      outcome: parsed.outcome || null
+    })
+    .select("id")
+    .single();
+
+  if (error || !session) {
+    throw new Error(error?.message ?? "Фокус-сессия не сохранена");
+  }
+
+  await logActivityEvent(supabase, userId, {
+    entityType: "focus_session",
+    entityId: session.id,
+    action: "focus_created",
+    title: duration ? `Фокус-сессия ${duration} мин.` : "Фокус-сессия сохранена",
+    description: parsed.outcome || parsed.note || null,
+    metadata: {
+      taskId,
+      durationMinutes: duration
+    }
+  });
+
+  revalidatePath("/focus");
+  revalidatePath("/activity");
 }
 
 export async function upsertWeeklyReviewAction(formData: FormData) {
@@ -3962,6 +4317,78 @@ function asString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+async function logActivityEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  input: {
+    entityType: string;
+    entityId?: string | null;
+    action: string;
+    title: string;
+    description?: string | null;
+    metadata?: Record<string, unknown>;
+    visibility?: "private" | "team";
+  }
+) {
+  const { error } = await supabase.from("activity_events").insert({
+    user_id: userId,
+    entity_type: input.entityType,
+    entity_id: input.entityId ?? null,
+    action: input.action,
+    title: input.title,
+    description: input.description ?? null,
+    metadata: (input.metadata ?? {}) as Json,
+    visibility: input.visibility ?? "private"
+  });
+
+  if (error) {
+    console.warn("Activity event was not written", error.message);
+  }
+}
+
+async function upsertNotifications(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  candidates: NotificationCandidate[]
+) {
+  if (!candidates.length) {
+    return;
+  }
+
+  const { error } = await supabase.from("notifications").upsert(
+    candidates.map((candidate) => ({
+      user_id: userId,
+      type: candidate.type,
+      title: candidate.title,
+      body: candidate.body,
+      entity_type: candidate.entity_type,
+      entity_id: candidate.entity_id,
+      action_url: candidate.action_url,
+      scheduled_for: candidate.scheduled_for,
+      dedupe_key: candidate.dedupe_key
+    })),
+    { onConflict: "user_id,dedupe_key", ignoreDuplicates: true }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  for (const candidate of candidates) {
+    await logActivityEvent(supabase, userId, {
+      entityType: "notification",
+      action: "notification_created",
+      title: candidate.title,
+      description: candidate.body,
+      metadata: {
+        type: candidate.type,
+        dedupeKey: candidate.dedupe_key,
+        actionUrl: candidate.action_url
+      }
+    });
+  }
+}
+
 function getSafeNextPath(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
     return null;
@@ -4111,4 +4538,6 @@ function revalidateTracker() {
   revalidatePath("/health");
   revalidatePath("/car");
   revalidatePath("/work");
+  revalidatePath("/activity");
+  revalidatePath("/focus");
 }

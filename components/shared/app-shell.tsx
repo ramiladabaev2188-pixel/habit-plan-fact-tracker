@@ -24,13 +24,16 @@ import {
   Rows3,
   Settings,
   ShieldCheck,
+  ScrollText,
   Sprout,
+  TimerReset,
   Users,
   WalletCards,
   X
 } from "lucide-react";
 import { signOutAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { NotificationCenter } from "@/components/shared/notification-center";
 import { PwaInstallPrompt } from "@/components/shared/pwa-install-prompt";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Toaster } from "@/components/shared/toaster";
@@ -42,6 +45,8 @@ const navItems = [
   { href: "/tasks", label: "Задачи", icon: Rows3 },
   { href: "/goals", label: "Цели", icon: Flag },
   { href: "/analytics", label: "Аналитика", icon: LineChart },
+  { href: "/focus", label: "Фокус", icon: TimerReset },
+  { href: "/activity", label: "Журнал", icon: ScrollText },
   { href: "/finance", label: "Финансы", icon: WalletCards },
   { href: "/health", label: "Здоровье", icon: HeartPulse },
   { href: "/growth", label: "Развитие", icon: Sprout },
@@ -64,7 +69,7 @@ const navItems = [
 const navGroups = [
   {
     title: "Ежедневно",
-    items: ["/daily", "/dashboard", "/tasks"]
+    items: ["/daily", "/dashboard", "/tasks", "/focus", "/activity"]
   },
   {
     title: "Развитие",
@@ -168,6 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
+            <NotificationCenter />
             <ThemeToggle />
             <form action={signOutAction}>
               <Button type="submit" variant="outline" size="sm">

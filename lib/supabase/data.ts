@@ -5,13 +5,17 @@ import type {
   Car,
   CarServiceItem,
   CarServiceLog,
+  ActivityEvent,
+  AppNotification,
   DailyFact,
   DailyNote,
   DailyPlan,
+  DaySummary,
   Experiment,
   ExperimentCheckin,
   FinanceGoal,
   FinanceSnapshot,
+  FocusSession,
   Goal,
   GoalTask,
   HealthLog,
@@ -23,6 +27,7 @@ import type {
   Task,
   TaskPlanningRule,
   TrackerData,
+  NotificationSetting,
   UserPreference,
   WeeklyReview,
   WorkCase,
@@ -144,6 +149,32 @@ export type WorkLoadResult = {
   projects: WorkProject[];
   cases: WorkCase[];
   skills: WorkSkill[];
+  error: string | null;
+};
+
+export type NotificationCenterLoadResult = {
+  notifications: AppNotification[];
+  settings: NotificationSetting | null;
+  error: string | null;
+};
+
+export type ActivityPageFilters = {
+  page?: number;
+  pageSize?: number;
+  entityType?: string;
+  visibility?: string;
+};
+
+export type ActivityPageLoadResult = {
+  events: ActivityEvent[];
+  daySummaries: DaySummary[];
+  total: number;
+  error: string | null;
+};
+
+export type FocusPageLoadResult = {
+  sessions: FocusSession[];
+  tasks: Task[];
   error: string | null;
 };
 
@@ -772,6 +803,117 @@ export async function loadWorkPage(): Promise<WorkLoadResult> {
   };
 }
 
+export async function loadNotificationCenter(): Promise<NotificationCenterLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { notifications: [], settings: null, error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  await supabase.from("notification_settings").upsert({ user_id: user.id }, { onConflict: "user_id" });
+
+  const [notificationsResult, settingsResult] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .neq("status", "dismissed")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase.from("notification_settings").select("*").eq("user_id", user.id).maybeSingle()
+  ]);
+
+  return {
+    notifications: (notificationsResult.data ?? []).map(normalizeNotification),
+    settings: settingsResult.data ? normalizeNotificationSetting(settingsResult.data) : null,
+    error: notificationsResult.error?.message ?? settingsResult.error?.message ?? null
+  };
+}
+
+export async function loadActivityPage(filters: ActivityPageFilters): Promise<ActivityPageLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { events: [], daySummaries: [], total: 0, error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), 80);
+  const page = Math.max(filters.page ?? 1, 1);
+  let query = supabase
+    .from("activity_events")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("occurred_at", { ascending: false });
+
+  if (filters.entityType && filters.entityType !== "all") {
+    query = query.eq("entity_type", filters.entityType);
+  }
+  if (filters.visibility && ["private", "team"].includes(filters.visibility)) {
+    query = query.eq("visibility", filters.visibility as "private" | "team");
+  }
+
+  const [eventsResult, summariesResult] = await Promise.all([
+    query.range((page - 1) * pageSize, page * pageSize - 1),
+    supabase
+      .from("day_summaries")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .limit(14)
+  ]);
+
+  return {
+    events: (eventsResult.data ?? []).map(normalizeActivityEvent),
+    daySummaries: (summariesResult.data ?? []).map(normalizeDaySummary),
+    total: eventsResult.count ?? 0,
+    error: eventsResult.error?.message ?? summariesResult.error?.message ?? null
+  };
+}
+
+export async function loadFocusPage(): Promise<FocusPageLoadResult> {
+  noStore();
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { sessions: [], tasks: [], error: userError?.message ?? "Нужна авторизация" };
+  }
+
+  const [sessionsResult, tasksResult] = await Promise.all([
+    supabase
+      .from("focus_sessions")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("started_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+  ]);
+
+  return {
+    sessions: (sessionsResult.data ?? []).map(normalizeFocusSession),
+    tasks: (tasksResult.data ?? []).map(normalizeTask),
+    error: sessionsResult.error?.message ?? tasksResult.error?.message ?? null
+  };
+}
+
 function sanitizeSearch(value?: string) {
   return (value ?? "").replace(/[,%()]/g, " ").trim().slice(0, 120);
 }
@@ -957,6 +1099,47 @@ export function normalizeWorkSkill(row: WorkSkill): WorkSkill {
   };
 }
 
+export function normalizeNotificationSetting(row: NotificationSetting): NotificationSetting {
+  return {
+    ...row,
+    reminder_weekdays: row.reminder_weekdays ?? [1, 2, 3, 4, 5, 6, 0]
+  };
+}
+
+export function normalizeNotification(row: AppNotification): AppNotification {
+  return row;
+}
+
+export function normalizeActivityEvent(row: Omit<ActivityEvent, "metadata"> & { metadata: unknown }): ActivityEvent {
+  return {
+    ...row,
+    metadata: normalizeRecord(row.metadata)
+  };
+}
+
+export function normalizeDaySummary(row: Omit<DaySummary, "metadata"> & { metadata: unknown }): DaySummary {
+  return {
+    ...row,
+    planned_count: Number(row.planned_count),
+    done_count: Number(row.done_count),
+    partial_count: Number(row.partial_count),
+    overdone_count: Number(row.overdone_count),
+    missed_count: Number(row.missed_count),
+    missing_fact_count: Number(row.missing_fact_count),
+    plan_score: Number(row.plan_score),
+    fact_score: Number(row.fact_score),
+    completion: Number(row.completion),
+    metadata: normalizeRecord(row.metadata)
+  };
+}
+
+export function normalizeFocusSession(row: FocusSession): FocusSession {
+  return {
+    ...row,
+    duration_minutes: row.duration_minutes === null ? null : Number(row.duration_minutes)
+  };
+}
+
 export function normalizeUserPreference(row: UserPreference): UserPreference {
   return {
     ...row,
@@ -966,4 +1149,8 @@ export function normalizeUserPreference(row: UserPreference): UserPreference {
     onboarding_blockers: row.onboarding_blockers ?? [],
     desired_identity: row.desired_identity ?? null
   };
+}
+
+function normalizeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { upsertWeeklyReviewAction } from "@/app/actions";
 import { generateWeeklyRecommendations } from "@/lib/recommendations";
 import { Badge } from "@/components/ui/badge";
@@ -49,19 +50,24 @@ export default async function WeeklyPage({
           <h1 className="text-2xl font-semibold tracking-normal">Недельный отчет</h1>
           <p className="text-sm text-muted-foreground">{selectedMonth.title}</p>
         </div>
-        <form action="/weekly" className="grid gap-2 sm:grid-cols-[240px_auto] sm:items-end">
-          <div className="space-y-2">
-            <Label>Месяц</Label>
-            <Select name="month" defaultValue={selectedMonth.id}>
-              {months.map((month) => (
-                <option key={month.id} value={month.id}>
-                  {month.title}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Button type="submit">Открыть</Button>
-        </form>
+        <div className="grid gap-2 sm:grid-cols-[240px_auto_auto] sm:items-end">
+          <form action="/weekly" className="grid gap-2 sm:grid-cols-[240px_auto] sm:items-end">
+            <div className="space-y-2">
+              <Label>Месяц</Label>
+              <Select name="month" defaultValue={selectedMonth.id}>
+                {months.map((month) => (
+                  <option key={month.id} value={month.id}>
+                    {month.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button type="submit">Открыть</Button>
+          </form>
+          <Button asChild variant="outline" className="self-end">
+            <Link href={`/weekly/export?month=${selectedMonth.id}`}>Экспорт MD</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4">

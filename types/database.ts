@@ -1543,6 +1543,241 @@ export type Database = {
         };
         Relationships: [];
       };
+      notification_settings: {
+        Row: {
+          id: string;
+          user_id: string;
+          enabled: boolean;
+          evening_reminder_time: string;
+          remind_deadline_1d: boolean;
+          remind_deadline_3d: boolean;
+          remind_overdue: boolean;
+          remind_weekly_review: boolean;
+          quiet_mode: boolean;
+          reminder_weekdays: number[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          enabled?: boolean;
+          evening_reminder_time?: string;
+          remind_deadline_1d?: boolean;
+          remind_deadline_3d?: boolean;
+          remind_overdue?: boolean;
+          remind_weekly_review?: boolean;
+          quiet_mode?: boolean;
+          reminder_weekdays?: number[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          enabled?: boolean;
+          evening_reminder_time?: string;
+          remind_deadline_1d?: boolean;
+          remind_deadline_3d?: boolean;
+          remind_overdue?: boolean;
+          remind_weekly_review?: boolean;
+          quiet_mode?: boolean;
+          reminder_weekdays?: number[];
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type:
+            | "due_today"
+            | "due_tomorrow"
+            | "due_3_days"
+            | "overdue"
+            | "today_fact_missing"
+            | "yesterday_not_closed"
+            | "stale_goal_progress"
+            | "weak_life_area"
+            | "weekly_review_due"
+            | "monthly_plan_update_due"
+            | "team_challenge_ending"
+            | "system";
+          title: string;
+          body: string | null;
+          entity_type: string | null;
+          entity_id: string | null;
+          action_url: string | null;
+          status: "unread" | "read" | "dismissed";
+          scheduled_for: string | null;
+          dedupe_key: string;
+          created_at: string;
+          read_at: string | null;
+          dismissed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          type:
+            | "due_today"
+            | "due_tomorrow"
+            | "due_3_days"
+            | "overdue"
+            | "today_fact_missing"
+            | "yesterday_not_closed"
+            | "stale_goal_progress"
+            | "weak_life_area"
+            | "weekly_review_due"
+            | "monthly_plan_update_due"
+            | "team_challenge_ending"
+            | "system";
+          title: string;
+          body?: string | null;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          action_url?: string | null;
+          status?: "unread" | "read" | "dismissed";
+          scheduled_for?: string | null;
+          dedupe_key: string;
+          created_at?: string;
+          read_at?: string | null;
+          dismissed_at?: string | null;
+        };
+        Update: {
+          title?: string;
+          body?: string | null;
+          action_url?: string | null;
+          status?: "unread" | "read" | "dismissed";
+          scheduled_for?: string | null;
+          read_at?: string | null;
+          dismissed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      activity_events: {
+        Row: {
+          id: string;
+          user_id: string;
+          entity_type: string;
+          entity_id: string | null;
+          action: string;
+          title: string;
+          description: string | null;
+          occurred_at: string;
+          metadata: Json;
+          visibility: "private" | "team";
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          entity_type: string;
+          entity_id?: string | null;
+          action: string;
+          title: string;
+          description?: string | null;
+          occurred_at?: string;
+          metadata?: Json;
+          visibility?: "private" | "team";
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          occurred_at?: string;
+          metadata?: Json;
+          visibility?: "private" | "team";
+        };
+        Relationships: [];
+      };
+      day_summaries: {
+        Row: {
+          id: string;
+          user_id: string;
+          month_id: string;
+          date: string;
+          planned_count: number;
+          done_count: number;
+          partial_count: number;
+          overdone_count: number;
+          missed_count: number;
+          missing_fact_count: number;
+          plan_score: number;
+          fact_score: number;
+          completion: number;
+          main_miss_reason: string | null;
+          note: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          month_id: string;
+          date: string;
+          planned_count?: number;
+          done_count?: number;
+          partial_count?: number;
+          overdone_count?: number;
+          missed_count?: number;
+          missing_fact_count?: number;
+          plan_score?: number;
+          fact_score?: number;
+          completion?: number;
+          main_miss_reason?: string | null;
+          note?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          planned_count?: number;
+          done_count?: number;
+          partial_count?: number;
+          overdone_count?: number;
+          missed_count?: number;
+          missing_fact_count?: number;
+          plan_score?: number;
+          fact_score?: number;
+          completion?: number;
+          main_miss_reason?: string | null;
+          note?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      focus_sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          task_id: string | null;
+          started_at: string;
+          ended_at: string | null;
+          duration_minutes: number | null;
+          note: string | null;
+          outcome: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          task_id?: string | null;
+          started_at: string;
+          ended_at?: string | null;
+          duration_minutes?: number | null;
+          note?: string | null;
+          outcome?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          task_id?: string | null;
+          started_at?: string;
+          ended_at?: string | null;
+          duration_minutes?: number | null;
+          note?: string | null;
+          outcome?: string | null;
+        };
+        Relationships: [];
+      };
       change_logs: {
         Row: {
           id: string;

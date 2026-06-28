@@ -113,6 +113,36 @@ export const preferencesSchema = z.object({
   defaultMonthTarget: z.coerce.number().min(0.1).max(2)
 });
 
+export const notificationSettingsSchema = z.object({
+  enabled: z.coerce.boolean().default(true),
+  eveningReminderTime: z.string().trim().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Укажите время в формате HH:mm"),
+  remindDeadline1d: z.coerce.boolean().default(true),
+  remindDeadline3d: z.coerce.boolean().default(true),
+  remindOverdue: z.coerce.boolean().default(true),
+  remindWeeklyReview: z.coerce.boolean().default(true),
+  quietMode: z.coerce.boolean().default(false),
+  reminderWeekdays: z.array(z.coerce.number().int().min(0).max(6)).default([1, 2, 3, 4, 5, 6, 0])
+});
+
+export const notificationActionSchema = z.object({
+  notificationId: z.string().uuid()
+});
+
+export const focusSessionSchema = z.object({
+  taskId: z.string().uuid().or(z.literal("")).optional(),
+  startedAt: z.string().trim().min(1),
+  endedAt: z.string().trim().optional(),
+  durationMinutes: z.coerce.number().int().min(0).max(24 * 60).or(z.literal("")).optional(),
+  note: z.string().trim().max(1000).optional(),
+  outcome: z.string().trim().max(1000).optional()
+});
+
+export const daySummarySchema = z.object({
+  monthId: z.string().uuid(),
+  date: dateKeySchema,
+  note: z.string().trim().max(1200).optional()
+});
+
 export const goalSchema = z.object({
   id: z.string().uuid().optional(),
   title: z.string().trim().min(2, "Название слишком короткое"),

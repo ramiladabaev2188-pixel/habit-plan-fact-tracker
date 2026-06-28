@@ -345,6 +345,10 @@
     border-radius: 0 10px 0 0;
   }
 
+  .notification-panel {
+    @apply absolute right-0 top-[calc(100%+0.65rem)] z-50 w-[min(92vw,420px)] overflow-hidden rounded-xl border border-border bg-card shadow-[0_20px_60px_rgba(32,32,32,0.16)];
+  }
+
   .app-all-nav-backdrop {
     @apply fixed inset-0 z-50 flex items-end bg-foreground/15 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm md:items-start md:justify-center md:pt-24;
   }
